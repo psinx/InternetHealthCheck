@@ -96,7 +96,7 @@ The script saves state to `logs/last_status`:
 ### Schedule with Cron
 ```bash
 # Run every 5 minutes
-*/5 * * * * /home/prateek/InternetHealthCheck/internet_health_check.sh
+*/5 * * * * ~/InternetHealthCheck/internet_health_check.sh
 ```
 
 ### View Results
