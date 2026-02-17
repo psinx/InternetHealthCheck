@@ -35,7 +35,7 @@ When a DNS failure is detected, the script identifies where in the chain the bre
 | File | Purpose |
 |------|---------|
 | `internet_health_check.sh` | Main script |
-| `tests/test_internet_health_check.sh` | Test suite (9 tests, 100% pass rate) |
+| `tests/test_internet_health_check.sh` | Test suite (12 tests, 100% pass rate) |
 | `logs/internet_health.log` | Monitoring logs (auto-rotated at 2MB) |
 
 ## Script Features
@@ -44,24 +44,37 @@ When a DNS failure is detected, the script identifies where in the chain the bre
 
 ## Log Format
 
-Example output when DNS issue detected:
+### Successful System Status
 ```
-2026-02-16 21:02:22 [INTERNET-HEALTH-CHECK] DOWN
-2026-02-16 21:02:22 [INTERNET-HEALTH-CHECK] Test: Fail via Pi-hole (127.0.0.1:53)
-2026-02-16 21:02:22 [INTERNET-HEALTH-CHECK] Test: Pass via dnscrypt-proxy (127.0.0.1:5053)
-2026-02-16 21:02:22 [INTERNET-HEALTH-CHECK] Test: Pass via Cloudflare public (1.1.1.1:53)
-2026-02-16 21:02:22 [INTERNET-HEALTH-CHECK] Issue: Pi-hole × dnscrypt-proxy → Cloudflare
-2026-02-16 21:02:22 [INTERNET-HEALTH-CHECK] Issue: Pi-hole forwarding
-2026-02-16 21:02:22 [INTERNET-HEALTH-CHECK] Issue: DNS issue detected. Connectivity still OK
-2026-02-16 21:02:22 [INTERNET-HEALTH-CHECK] DOWN
+2026-02-17 10:30:45 [INTERNET-HEALTH-CHECK] [eth0] OK
+2026-02-17 10:30:50 [INTERNET-HEALTH-CHECK] [wlan0] OK
+```
+
+### Connectivity Failure
+```
+2026-02-17 10:31:00 [INTERNET-HEALTH-CHECK] [eth0] DOWN - CONNECTIVITY OUTAGE detected
+```
+
+### DNS Chain Issue (with connectivity OK)
+```
+2026-02-16 21:02:22 [INTERNET-HEALTH-CHECK] [eth0] DOWN
+2026-02-16 21:02:22 [INTERNET-HEALTH-CHECK] [eth0] Test: Fail via Pi-hole (127.0.0.1:53)
+2026-02-16 21:02:22 [INTERNET-HEALTH-CHECK] [eth0] Test: Pass via dnscrypt-proxy (127.0.0.1:5053)
+2026-02-16 21:02:22 [INTERNET-HEALTH-CHECK] [eth0] Test: Pass via Cloudflare public (1.1.1.1:53)
+2026-02-16 21:02:22 [INTERNET-HEALTH-CHECK] [eth0] Issue: Pi-hole × dnscrypt-proxy → Cloudflare
+2026-02-16 21:02:22 [INTERNET-HEALTH-CHECK] [eth0] Issue: Pi-hole forwarding
+2026-02-16 21:02:22 [INTERNET-HEALTH-CHECK] [eth0] Issue: DNS issue detected. Connectivity still OK
+2026-02-16 21:02:22 [INTERNET-HEALTH-CHECK] [eth0] DOWN
 ```
 
 **Key indicators:**
+- `[interface] OK` - Interface healthy (both connectivity and DNS OK)
+- `[interface] DOWN - CONNECTIVITY OUTAGE detected` - Ping failed (no internet access)
+- `[interface] DOWN` (block marker) - Start and end of DNS issue error block
 - `Test: Pass` - DNS service responding
 - `Test: Fail` - DNS service not responding
-- `Issue: × location` - Where the chain breaks
-- `Issue: description` - Why it failed
-- `DOWN` markers - Start and end of error block
+- `Issue: × location` - Where the DNS chain breaks
+- `Issue: description` - Why it failed (forwarding, DoH, upstream connectivity)
 
 ## Configuration
 
@@ -173,7 +186,7 @@ Logs are automatically rotated when they exceed 2MB:
 
 ## Test Suite
 
-Comprehensive test coverage with 9 test scenarios:
+Comprehensive test coverage with 12 test scenarios (100% passing):
 
 | Test | Coverage |
 |------|----------|
@@ -186,6 +199,9 @@ Comprehensive test coverage with 9 test scenarios:
 | All DNS fails | Multiple service failure handling |
 | DNS issue with OK connectivity | Partial failure detection |
 | Partial failures | Multiple service combinations |
+| Multi-interface coordination | eth0 and wlan0 independent checks |
+| Disk wear reduction logic | OK suppression within 24h window |
+| State inference from logs | Reads last run from log file |
 
 ### Running Tests
 
