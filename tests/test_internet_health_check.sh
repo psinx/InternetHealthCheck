@@ -147,7 +147,7 @@ test_2_ping_fail() {
     setup_test_env
     run_with_mocks 1 0 0 0
     
-    if log_contains "Fail during PING"; then
+    if log_contains "Fail during Ping"; then
         assert_pass "Ping failure detected"
     else
         assert_fail "Ping failure not detected"

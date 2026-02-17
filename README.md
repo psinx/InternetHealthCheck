@@ -44,26 +44,26 @@ All log entries include a timestamp, interface identifier, and status message.
 
 ### Successful System Status
 ```
-2026-02-17 10:30:45 [INTERNET-HEALTH-CHECK] [eth0] OK
-2026-02-17 10:30:50 [INTERNET-HEALTH-CHECK] [wlan0] OK
+Log: [INTERNET-HEALTH-CHECK] [eth0] OK
+Log: [INTERNET-HEALTH-CHECK] [wlan0] OK
 ```
 
 ### Connectivity Failure
 ```
-2026-02-17 10:35:12 [INTERNET-HEALTH-CHECK] Test: Fail during PING on eth0: 1.1.1.1 did not respond (connectivity outage)
-2026-02-17 10:35:12 [INTERNET-HEALTH-CHECK] [eth0] DOWN - CONNECTIVITY OUTAGE detected
+Log: [INTERNET-HEALTH-CHECK] [eth0] Test: Fail during Ping - 1.1.1.1 did not respond (connectivity outage)
+Log: [INTERNET-HEALTH-CHECK] [eth0] DOWN - CONNECTIVITY OUTAGE detected
 ```
 
 ### DNS Chain Issue (with connectivity OK)
 ```
-2026-02-17 10:40:05 [INTERNET-HEALTH-CHECK] [eth0] DOWN
-2026-02-17 10:40:05 [INTERNET-HEALTH-CHECK] [eth0] Test: Fail via Pi-hole (127.0.0.1:53)
-2026-02-17 10:40:05 [INTERNET-HEALTH-CHECK] [eth0] Test: Pass via dnscrypt-proxy (127.0.0.1:5053)
-2026-02-17 10:40:05 [INTERNET-HEALTH-CHECK] [eth0] Test: Pass via Cloudflare public (1.1.1.1:53)
-2026-02-17 10:40:05 [INTERNET-HEALTH-CHECK] [eth0] Issue: Pi-hole × dnscrypt-proxy → Cloudflare
-2026-02-17 10:40:05 [INTERNET-HEALTH-CHECK] [eth0] Issue: Pi-hole forwarding
-2026-02-17 10:40:05 [INTERNET-HEALTH-CHECK] [eth0] Issue: DNS issue detected. Connectivity still OK
-2026-02-17 10:40:05 [INTERNET-HEALTH-CHECK] [eth8] DOWN
+Log: [INTERNET-HEALTH-CHECK] [eth0] DOWN
+Log: [INTERNET-HEALTH-CHECK] [eth0] Test: Fail via Pi-hole (127.0.0.1:53)
+Log: [INTERNET-HEALTH-CHECK] [eth0] Test: Pass via dnscrypt-proxy (127.0.0.1:5053)
+Log: [INTERNET-HEALTH-CHECK] [eth0] Test: Pass via Cloudflare public (1.1.1.1:53)
+Log: [INTERNET-HEALTH-CHECK] [eth0] Issue: Pi-hole × dnscrypt-proxy → Cloudflare
+Log: [INTERNET-HEALTH-CHECK] [eth0] Issue: Pi-hole forwarding
+Log: [INTERNET-HEALTH-CHECK] [eth0] Issue: DNS issue detected. Connectivity still OK
+Log: [INTERNET-HEALTH-CHECK] [eth0] DOWN
 ```
 
 **Key indicators:**
@@ -261,26 +261,26 @@ Both interfaces (eth0 and wlan0) are tested independently:
 
 **Scenario 1: All Systems Healthy**
 ```
-2026-02-17 10:30:45 [INTERNET-HEALTH-CHECK] [eth0] OK
-2026-02-17 10:30:50 [INTERNET-HEALTH-CHECK] [wlan0] OK
+Log: [INTERNET-HEALTH-CHECK] [eth0] OK
+Log: [INTERNET-HEALTH-CHECK] [wlan0] OK
 ```
 
 **Scenario 2: Pi-hole DNS Fails**
 ```
-2026-02-17 10:40:05 [INTERNET-HEALTH-CHECK] [eth0] DOWN
-2026-02-17 10:40:05 [INTERNET-HEALTH-CHECK] [eth0] Test: Fail via Pi-hole (127.0.0.1:53)
-2026-02-17 10:40:05 [INTERNET-HEALTH-CHECK] [eth0] Test: Pass via dnscrypt-proxy (127.0.0.1:5053)
-2026-02-17 10:40:05 [INTERNET-HEALTH-CHECK] [eth0] Test: Pass via Cloudflare public (1.1.1.1:53)
-2026-02-17 10:40:05 [INTERNET-HEALTH-CHECK] [eth0] Issue: Pi-hole × dnscrypt-proxy → Cloudflare
-2026-02-17 10:40:05 [INTERNET-HEALTH-CHECK] [eth0] Issue: Pi-hole forwarding
-2026-02-17 10:40:05 [INTERNET-HEALTH-CHECK] [eth0] Issue: DNS issue detected. Connectivity still OK
-2026-02-17 10:40:05 [INTERNET-HEALTH-CHECK] [eth0] DOWN
+Log: [INTERNET-HEALTH-CHECK] [eth0] DOWN
+Log: [INTERNET-HEALTH-CHECK] [eth0] Test: Fail via Pi-hole (127.0.0.1:53)
+Log: [INTERNET-HEALTH-CHECK] [eth0] Test: Pass via dnscrypt-proxy (127.0.0.1:5053)
+Log: [INTERNET-HEALTH-CHECK] [eth0] Test: Pass via Cloudflare public (1.1.1.1:53)
+Log: [INTERNET-HEALTH-CHECK] [eth0] Issue: Pi-hole × dnscrypt-proxy → Cloudflare
+Log: [INTERNET-HEALTH-CHECK] [eth0] Issue: Pi-hole forwarding
+Log: [INTERNET-HEALTH-CHECK] [eth0] Issue: DNS issue detected. Connectivity still OK
+Log: [INTERNET-HEALTH-CHECK] [eth0] DOWN
 ```
 
 **Scenario 3: No Internet Connectivity**
 ```
-2026-02-17 10:35:12 [INTERNET-HEALTH-CHECK] Test: Fail during PING on eth0: 1.1.1.1 did not respond (connectivity outage)
-2026-02-17 10:35:12 [INTERNET-HEALTH-CHECK] [eth0] DOWN - CONNECTIVITY OUTAGE detected
+Log: [INTERNET-HEALTH-CHECK] [eth0] Test: Fail during Ping - 1.1.1.1 did not respond (connectivity outage)
+Log: [INTERNET-HEALTH-CHECK] [eth0] DOWN - CONNECTIVITY OUTAGE detected
 ```
 
 ## DNS Chain Visualization
