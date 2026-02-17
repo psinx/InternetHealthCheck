@@ -54,7 +54,7 @@ should_log_ok() {
     # If log file doesn't exist, log it
     [[ ! -f "$LOG_FILE" ]] && return 0
     
-    # Check if last log entry is older than 24 hours
+    # Check if log file is older than 24 hours
     local last_modified
     last_modified=$(stat -c %Y "$LOG_FILE" 2>/dev/null) || last_modified=0
     local current_time
@@ -65,25 +65,34 @@ should_log_ok() {
     # If more than 24 hours, always log
     (( diff >= hours_24 )) && return 0
     
-    # Check if the last run had both interfaces OK
-    # Count how many lines in the log have interface markers to find last run
-    local lines_with_eth0 lines_with_wlan0
-    lines_with_eth0=$(grep -c "\[eth0\]" "$LOG_FILE" 2>/dev/null) || lines_with_eth0=0
-    lines_with_wlan0=$(grep -c "\[wlan0\]" "$LOG_FILE" 2>/dev/null) || lines_with_wlan0=0
-    lines_with_eth0=${lines_with_eth0:-0}
-    lines_with_wlan0=${lines_with_wlan0:-0}
+    # Find the last run: get the last log entries for both interfaces
+    local last_eth0_line last_wlan0_line
+    local last_eth0_time last_wlan0_time
     
-    # Need at least one of each to infer state
-    (( lines_with_eth0 == 0 || lines_with_wlan0 == 0 )) && return 0
+    last_eth0_line=$(grep "\[eth0\]" "$LOG_FILE" 2>/dev/null | tail -1)
+    last_wlan0_line=$(grep "\[wlan0\]" "$LOG_FILE" 2>/dev/null | tail -1)
     
-    # Check if the last lines for both interfaces are OK (not DOWN)
-    local last_eth0_line=$(grep "\[eth0\]" "$LOG_FILE" | tail -1)
-    local last_wlan0_line=$(grep "\[wlan0\]" "$LOG_FILE" | tail -1)
+    # If we don't have entries for both interfaces, can't suppress
+    [[ -z "$last_eth0_line" || -z "$last_wlan0_line" ]] && return 0
     
-    # If both last lines are OK (not DOWN or issue), suppress logging
+    # Extract timestamps from the log entries
+    # Format: 2026-02-17 12:25:04 [INTERNET-HEALTH-CHECK] [eth0] OK
+    last_eth0_time=$(echo "$last_eth0_line" | awk '{print $1 " " $2}')
+    last_wlan0_time=$(echo "$last_wlan0_line" | awk '{print $1 " " $2}')
+    
+    # Convert timestamps to Unix time
+    local eth0_sec wlan0_sec
+    eth0_sec=$(date -d "$last_eth0_time" +%s 2>/dev/null) || eth0_sec=0
+    wlan0_sec=$(date -d "$last_wlan0_time" +%s 2>/dev/null) || wlan0_sec=0
+    
+    # Check if both entries are from the same run (within 60 seconds of each other)
+    local time_diff=$(( eth0_sec > wlan0_sec ? eth0_sec - wlan0_sec : wlan0_sec - eth0_sec ))
+    (( time_diff > 60 )) && return 0  # Different runs, always log
+    
+    # Check if both last entries are OK (not DOWN or error markers)
     if [[ "$last_eth0_line" =~ OK && "$last_wlan0_line" =~ OK ]] && 
        [[ ! "$last_eth0_line" =~ DOWN && ! "$last_wlan0_line" =~ DOWN ]]; then
-        # Return 1 (false) to suppress logging
+        # Both interfaces were OK in the last run - suppress logging
         return 1
     fi
     
