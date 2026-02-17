@@ -40,27 +40,30 @@ When a DNS failure is detected, the script identifies where in the chain the bre
 
 ## Log Format
 
+All log entries include a timestamp, interface identifier, and status message.
+
 ### Successful System Status
 ```
-Log: [INTERNET-HEALTH-CHECK] [eth0] OK
-Log: [INTERNET-HEALTH-CHECK] [wlan0] OK
+2026-02-17 10:30:45 [INTERNET-HEALTH-CHECK] [eth0] OK
+2026-02-17 10:30:50 [INTERNET-HEALTH-CHECK] [wlan0] OK
 ```
 
 ### Connectivity Failure
 ```
-Log: [INTERNET-HEALTH-CHECK] [eth0] DOWN - CONNECTIVITY OUTAGE detected
+2026-02-17 10:35:12 [INTERNET-HEALTH-CHECK] Test: Fail during PING on eth0: 1.1.1.1 did not respond (connectivity outage)
+2026-02-17 10:35:12 [INTERNET-HEALTH-CHECK] [eth0] DOWN - CONNECTIVITY OUTAGE detected
 ```
 
 ### DNS Chain Issue (with connectivity OK)
 ```
-Log: [INTERNET-HEALTH-CHECK] [eth0] DOWN
-Log: [INTERNET-HEALTH-CHECK] [eth0] Test: Fail via Pi-hole (127.0.0.1:53)
-Log: [INTERNET-HEALTH-CHECK] [eth0] Test: Pass via dnscrypt-proxy (127.0.0.1:5053)
-Log: [INTERNET-HEALTH-CHECK] [eth0] Test: Pass via Cloudflare public (1.1.1.1:53)
-Log: [INTERNET-HEALTH-CHECK] [eth0] Issue: Pi-hole × dnscrypt-proxy → Cloudflare
-Log: [INTERNET-HEALTH-CHECK] [eth0] Issue: Pi-hole forwarding
-Log: [INTERNET-HEALTH-CHECK] [eth0] Issue: DNS issue detected. Connectivity still OK
-Log: [INTERNET-HEALTH-CHECK] [eth0] DOWN
+2026-02-17 10:40:05 [INTERNET-HEALTH-CHECK] [eth0] DOWN
+2026-02-17 10:40:05 [INTERNET-HEALTH-CHECK] [eth0] Test: Fail via Pi-hole (127.0.0.1:53)
+2026-02-17 10:40:05 [INTERNET-HEALTH-CHECK] [eth0] Test: Pass via dnscrypt-proxy (127.0.0.1:5053)
+2026-02-17 10:40:05 [INTERNET-HEALTH-CHECK] [eth0] Test: Pass via Cloudflare public (1.1.1.1:53)
+2026-02-17 10:40:05 [INTERNET-HEALTH-CHECK] [eth0] Issue: Pi-hole × dnscrypt-proxy → Cloudflare
+2026-02-17 10:40:05 [INTERNET-HEALTH-CHECK] [eth0] Issue: Pi-hole forwarding
+2026-02-17 10:40:05 [INTERNET-HEALTH-CHECK] [eth0] Issue: DNS issue detected. Connectivity still OK
+2026-02-17 10:40:05 [INTERNET-HEALTH-CHECK] [eth8] DOWN
 ```
 
 **Key indicators:**
@@ -182,22 +185,20 @@ Logs are automatically rotated when they exceed 2MB:
 
 ## Test Suite
 
-Comprehensive test coverage with 12 test scenarios (100% passing):
+The test suite includes 9 test functions covering 12 individual test assertions (100% passing):
 
-| Test | Coverage |
-|------|----------|
-| All systems OK | Verifies normal operation |
-| Connectivity DOWN | Ping failure detection |
-| Repeated OK state | Multiple runs with OK state |
-| Pi-hole DNS fails | Individual service failure detection |
-| dnscrypt DNS fails | Individual service failure detection |
-| Cloudflare DNS fails | Individual service failure detection |
-| All DNS fails | Multiple service failure handling |
-| DNS issue with OK connectivity | Partial failure detection |
-| Partial failures | Multiple service combinations |
-| Multi-interface coordination | eth0 and wlan0 independent checks |
-| Disk wear reduction logic | OK suppression within 24h window |
-| State inference from logs | Reads last run from log file |
+| Test Function | Assertions | Coverage |
+|---|---|---|
+| Test 1: All systems OK | 1 | Verifies normal operation |
+| Test 2: Connectivity DOWN | 2 | Ping failure detection & alert logging |
+| Test 3: Repeated OK state | 1 | Multiple consecutive runs with OK state |
+| Test 4: Pi-hole DNS fails | 2 | Individual service failure & diagnostics |
+| Test 5: dnscrypt DNS fails | 1 | Individual service failure detection |
+| Test 6: Cloudflare DNS fails | 2 | Individual service failure & chain notation |
+| Test 7: All DNS services fail | 1 | Multiple service failure handling |
+| Test 8: DNS issue with OK connectivity | 1 | Partial failure detection |
+| Test 9: Pi-hole and dnscrypt fail | 1 | Multiple service combinations |
+| **Total** | **12** | **Complete coverage** |
 
 ### Running Tests
 
@@ -216,44 +217,87 @@ cd tests/
 
 ### Code Organization
 
-### Scenario 1: All Systems Healthy
+The script is organized into functional sections:
+
+1. **Configuration & Logging** - Constants, log directory setup, logging functions
+   - `log()` - Write timestamped messages to file or stderr
+   - `should_log_ok()` - Intelligent OK suppression for disk wear reduction
+   - `rotate_log()` - Automatic log rotation at 2MB with 7 backups
+
+2. **Connectivity Check** - Network interface testing
+   - `check_connectivity(interface)` - Ping the target IP, return OK/DOWN
+   - Logs detailed failure messages including timeout and target
+
+3. **DNS Chain Checks** - Multi-layer DNS validation
+   - `check_pihole_dns(interface)` - Query local Pi-hole instance
+   - `check_dnscrypt_dns(interface)` - Query dnscrypt-proxy on port 5053
+   - `check_cloudflare_dns(interface)` - Query public Cloudflare DNS
+   - All functions bind to interface IP using `dig -b` flag for interface-specific testing
+
+4. **DNS Chain Diagnostics** - Failure analysis and reporting
+   - `log_dns_results()` - Log individual DNS test results
+   - `determine_failure_point()` - Identify which DNS service failed
+   - `log_dns_diagnostics()` - Log detailed diagnostic information
+
+5. **Status Reporting** - Final status determination
+   - `determine_current_status()` - Combine connectivity + DNS results
+   - Output summary: OK, OUTAGE, or DNS ISSUE
+
+6. **Main Execution** - Argument parsing and orchestration
+   - Parse `--log-file` and `--reduce-disk-wear` flags
+   - Iterate through interfaces (eth0, wlan0)
+   - Call check functions and report status
+   - Handle missing interfaces gracefully
+
+### Multi-Interface Design
+
+Both interfaces (eth0 and wlan0) are tested independently:
+- Sequentially: eth0 first, then wlan0
+- Each gets complete connectivity + DNS validation
+- Separate log entries enable independent monitoring
+- Allows you to track wired vs wireless health separately
+
+### Scenario Examples
+
+**Scenario 1: All Systems Healthy**
 ```
-Log: [INTERNET-HEALTH-CHECK] [eth0] OK
-Log: [INTERNET-HEALTH-CHECK] [wlan0] OK
+2026-02-17 10:30:45 [INTERNET-HEALTH-CHECK] [eth0] OK
+2026-02-17 10:30:50 [INTERNET-HEALTH-CHECK] [wlan0] OK
 ```
 
-### Scenario 2: Pi-hole DNS Fails
+**Scenario 2: Pi-hole DNS Fails**
 ```
-Log: [INTERNET-HEALTH-CHECK] [eth0] DOWN
-Log: [INTERNET-HEALTH-CHECK] [eth0] Test: Fail via Pi-hole (127.0.0.1:53)
-Log: [INTERNET-HEALTH-CHECK] [eth0] Test: Pass via dnscrypt-proxy (127.0.0.1:5053)
-Log: [INTERNET-HEALTH-CHECK] [eth0] Test: Pass via Cloudflare public (1.1.1.1:53)
-Log: [INTERNET-HEALTH-CHECK] [eth0] Issue: Pi-hole × dnscrypt-proxy → Cloudflare
-Log: [INTERNET-HEALTH-CHECK] [eth0] Issue: Pi-hole forwarding
-Log: [INTERNET-HEALTH-CHECK] [eth0] Issue: DNS issue detected. Connectivity still OK
-Log: [INTERNET-HEALTH-CHECK] [eth0] DOWN
+2026-02-17 10:40:05 [INTERNET-HEALTH-CHECK] [eth0] DOWN
+2026-02-17 10:40:05 [INTERNET-HEALTH-CHECK] [eth0] Test: Fail via Pi-hole (127.0.0.1:53)
+2026-02-17 10:40:05 [INTERNET-HEALTH-CHECK] [eth0] Test: Pass via dnscrypt-proxy (127.0.0.1:5053)
+2026-02-17 10:40:05 [INTERNET-HEALTH-CHECK] [eth0] Test: Pass via Cloudflare public (1.1.1.1:53)
+2026-02-17 10:40:05 [INTERNET-HEALTH-CHECK] [eth0] Issue: Pi-hole × dnscrypt-proxy → Cloudflare
+2026-02-17 10:40:05 [INTERNET-HEALTH-CHECK] [eth0] Issue: Pi-hole forwarding
+2026-02-17 10:40:05 [INTERNET-HEALTH-CHECK] [eth0] Issue: DNS issue detected. Connectivity still OK
+2026-02-17 10:40:05 [INTERNET-HEALTH-CHECK] [eth0] DOWN
 ```
 
-### Scenario 3: No Internet Connectivity
+**Scenario 3: No Internet Connectivity**
 ```
-Log: [INTERNET-HEALTH-CHECK] [eth0] DOWN - CONNECTIVITY OUTAGE detected
+2026-02-17 10:35:12 [INTERNET-HEALTH-CHECK] Test: Fail during PING on eth0: 1.1.1.1 did not respond (connectivity outage)
+2026-02-17 10:35:12 [INTERNET-HEALTH-CHECK] [eth0] DOWN - CONNECTIVITY OUTAGE detected
 ```
 
 ## DNS Chain Visualization
 
-The script shows DNS chain status using a simple notation:
+The script shows DNS chain status using a simple notation to indicate where failures occur:
 
-- `→` = Connection works
+- `→` = Connection works  
 - `×` = Connection fails
 
-**Examples:**
-- Pi-hole fails: `Pi-hole × dnscrypt-proxy → Cloudflare`
-- dnscrypt fails: `Pi-hole → dnscrypt-proxy × Cloudflare`
-- Cloudflare fails: `Pi-hole → dnscrypt-proxy × Cloudflare` (same as dnscrypt)
+**Failure point examples:**
+- Pi-hole fails: `Pi-hole × dnscrypt-proxy → Cloudflare` (Pi-hole can't reach dnscrypt-proxy)
+- dnscrypt fails: `Pi-hole → dnscrypt-proxy × Cloudflare` (dnscrypt-proxy can't reach Cloudflare)
+- Cloudflare fails: `Pi-hole → dnscrypt-proxy × Cloudflare` (Cloudflare upstream unreachable)
 
-The issue description clarifies which component is actually failing.
+The issue description clarifies which component is actually failing and suggests the probable cause.
 
 ---
 
 **Last Updated:** February 17, 2026
-# InternetHealthCheck
+
