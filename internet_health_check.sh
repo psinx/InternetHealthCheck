@@ -241,7 +241,7 @@ determine_current_status() {
     local interface=$1 connectivity=$2 dns_ok=$3
     
     if [[ "$connectivity" == "DOWN" ]]; then
-        log "[$interface] ALERT - CONNECTIVITY OUTAGE detected"
+        log "[$interface] DOWN - CONNECTIVITY OUTAGE detected"
         echo "CONNECTIVITY_DOWN"
     else
         if [[ "$dns_ok" == "true" ]]; then
