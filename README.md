@@ -124,18 +124,17 @@ Logs are appended to the file and auto-rotated when exceeding 2MB.
 The `--reduce-disk-wear` flag minimizes SD card/storage wear by reading the log file history to intelligently suppress repetitive OK logs:
 
 **How it works:**
-- Reads the last logged entries for each interface from the log file
-- Extracts timestamps and checks if `[eth0]` and `[wlan0]` lines are from the same run (within 60 seconds)
-- If both entries are OK, from the same run, AND the log is less than 24 hours old, new OK logs are suppressed
-- **Complete run detection**: Requires both interfaces to have recent entries close in time - detects when a run is missing data
+- Reads the last `[eth0] OK` and `[wlan0] OK` lines from the log file
+- Compares their timestamps against the log file's modification time
+- If both OK entries are within 60 seconds of the last file write, they're from the last complete run
+- When both are recent and both are OK, suppresses new OK logs (no write needed)
 - **Failures are always logged immediately**, regardless of the flag
-- State is inferred from the log file itself - no separate state file is created
+- **24-hour timeout**: Always logs after 24 hours of silence
 
-**Example log entries (same run - 4 seconds apart):**
-```
-2026-02-17 12:25:04 [INTERNET-HEALTH-CHECK] [eth0] OK
-2026-02-17 12:25:08 [INTERNET-HEALTH-CHECK] [wlan0] OK  ← Within 60s = same run
-```
+**Why this approach:**
+- Log file modification time is the definitive "last write" marker
+- If both interfaces' OK entries are recent relative to file mod time, they're definitely from one coherent run
+- No separate state file needed - state is inferred from log content vs. filesystem metadata
 
 **Why this matters for RPi:**
 - Every write to an SD card reduces its lifespan
