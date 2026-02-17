@@ -65,8 +65,21 @@ export HOME
 
 # Override ip
 ip() {
-    # For interface checks, always return success
-    return 0
+    if [[ "$*" =~ "addr show" ]]; then
+        # Return mock IP address for interface
+        if [[ "$*" =~ "eth0" ]]; then
+            echo "2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500"
+            echo "    inet 192.168.1.100/24 brd 192.168.1.255 scope global eth0"
+        elif [[ "$*" =~ "wlan0" ]]; then
+            echo "3: wlan0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500"
+            echo "    inet 192.168.1.101/24 brd 192.168.1.255 scope global wlan0"
+        fi
+        return 0
+    elif [[ "$*" =~ "link show" ]]; then
+        # For interface checks
+        return 0
+    fi
+    return 1
 }
 
 # Override ping

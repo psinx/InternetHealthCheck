@@ -138,15 +138,27 @@ check_connectivity() {
 #=============================================================================
 
 check_pihole_dns() {
-    dig +short "$DNS_TEST_DOMAIN" @127.0.0.1 >/dev/null 2>&1
+    local interface=$1
+    local local_ip
+    local_ip=$(ip -4 addr show "$interface" 2>/dev/null | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -1)
+    [[ -z "$local_ip" ]] && return 1
+    dig +short "$DNS_TEST_DOMAIN" @127.0.0.1 -b "$local_ip" >/dev/null 2>&1
 }
 
 check_dnscrypt_dns() {
-    dig +short "$DNS_TEST_DOMAIN" @127.0.0.1 -p "$DNSCRYPT_PORT" >/dev/null 2>&1
+    local interface=$1
+    local local_ip
+    local_ip=$(ip -4 addr show "$interface" 2>/dev/null | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -1)
+    [[ -z "$local_ip" ]] && return 1
+    dig +short "$DNS_TEST_DOMAIN" @127.0.0.1 -p "$DNSCRYPT_PORT" -b "$local_ip" >/dev/null 2>&1
 }
 
 check_cloudflare_dns() {
-    dig +short "$DNS_TEST_DOMAIN" @1.1.1.1 >/dev/null 2>&1
+    local interface=$1
+    local local_ip
+    local_ip=$(ip -4 addr show "$interface" 2>/dev/null | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -1)
+    [[ -z "$local_ip" ]] && return 1
+    dig +short "$DNS_TEST_DOMAIN" @1.1.1.1 -b "$local_ip" >/dev/null 2>&1
 }
 
 log_dns_results() {
@@ -205,9 +217,9 @@ check_dns_chain() {
     pihole_ok=false; dnscrypt_ok=false; cloudflare_ok=false
     
     # Test each DNS endpoint
-    check_pihole_dns && pihole_ok=true
-    check_dnscrypt_dns && dnscrypt_ok=true
-    check_cloudflare_dns && cloudflare_ok=true
+    check_pihole_dns "$interface" && pihole_ok=true
+    check_dnscrypt_dns "$interface" && dnscrypt_ok=true
+    check_cloudflare_dns "$interface" && cloudflare_ok=true
     
     # Determine overall DNS status
     [[ "$pihole_ok" == "true" && "$dnscrypt_ok" == "true" && "$cloudflare_ok" == "true" ]] && dns_ok=true || dns_ok=false
