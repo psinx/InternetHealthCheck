@@ -155,12 +155,6 @@ The `--reduce-disk-wear` flag minimizes SD card/storage wear by reading the log 
 - On a 5-minute cron schedule: saves ~98% of disk writes when system is healthy
 - Maintains complete failure alerting - issues are logged immediately
 
-**Usage with cron:**
-```bash
-# Reduces writes while maintaining immediate failure alerts
-*/5 * * * * ~/InternetHealthCheck/internet_health_check.sh --log-file ~/logs/internet_health.log --reduce-disk-wear
-```
-
 **Example behavior with `--reduce-disk-wear`:**
 - Run 1 (12:00): Logs OK for both interfaces
 - Runs 2-12 (12:05-13:00): Suppresses OK logs (within 24h, both still OK)
