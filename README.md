@@ -38,10 +38,6 @@ When a DNS failure is detected, the script identifies where in the chain the bre
 | `tests/test_internet_health_check.sh` | Test suite (12 tests, 100% pass rate) |
 | `logs/internet_health.log` | Monitoring logs (auto-rotated at 2MB) |
 
-## Script Features
-
-### Connectivity Monitoring
-
 ## Log Format
 
 ### Successful System Status
@@ -214,7 +210,7 @@ cd tests/
 ./tests/test_internet_health_check.sh
 ```
 
-**Test Results:** ✅ 9 tests passed (100% pass rate)
+**Test Results:** ✅ 12 tests passed (100% pass rate)
 
 ## Architecture
 
@@ -222,24 +218,25 @@ cd tests/
 
 ### Scenario 1: All Systems Healthy
 ```
-Log: [INTERNET-HEALTH-CHECK] OK
+2026-02-17 10:30:45 [INTERNET-HEALTH-CHECK] [eth0] OK
+2026-02-17 10:30:50 [INTERNET-HEALTH-CHECK] [wlan0] OK
 ```
 
 ### Scenario 2: Pi-hole DNS Fails
 ```
-Log: [INTERNET-HEALTH-CHECK] DOWN
-Log: [INTERNET-HEALTH-CHECK] Test: Fail via Pi-hole (127.0.0.1:53)
-Log: [INTERNET-HEALTH-CHECK] Test: Pass via dnscrypt-proxy (127.0.0.1:5053)
-Log: [INTERNET-HEALTH-CHECK] Test: Pass via Cloudflare public (1.1.1.1:53)
-Log: [INTERNET-HEALTH-CHECK] Issue: Pi-hole × dnscrypt-proxy → Cloudflare
-Log: [INTERNET-HEALTH-CHECK] Issue: Pi-hole forwarding
-Log: [INTERNET-HEALTH-CHECK] Issue: DNS issue detected. Connectivity still OK
-Log: [INTERNET-HEALTH-CHECK] DOWN
+2026-02-16 21:02:22 [INTERNET-HEALTH-CHECK] [eth0] DOWN
+2026-02-16 21:02:22 [INTERNET-HEALTH-CHECK] [eth0] Test: Fail via Pi-hole (127.0.0.1:53)
+2026-02-16 21:02:22 [INTERNET-HEALTH-CHECK] [eth0] Test: Pass via dnscrypt-proxy (127.0.0.1:5053)
+2026-02-16 21:02:22 [INTERNET-HEALTH-CHECK] [eth0] Test: Pass via Cloudflare public (1.1.1.1:53)
+2026-02-16 21:02:22 [INTERNET-HEALTH-CHECK] [eth0] Issue: Pi-hole × dnscrypt-proxy → Cloudflare
+2026-02-16 21:02:22 [INTERNET-HEALTH-CHECK] [eth0] Issue: Pi-hole forwarding
+2026-02-16 21:02:22 [INTERNET-HEALTH-CHECK] [eth0] Issue: DNS issue detected. Connectivity still OK
+2026-02-16 21:02:22 [INTERNET-HEALTH-CHECK] [eth0] DOWN
 ```
 
 ### Scenario 3: No Internet Connectivity
 ```
-Log: [INTERNET-HEALTH-CHECK] ALERT - PING FAIL: 1.1.1.1 did not respond (connectivity outage)
+2026-02-17 10:31:00 [INTERNET-HEALTH-CHECK] [eth0] DOWN - CONNECTIVITY OUTAGE detected
 ```
 
 ## DNS Chain Visualization
@@ -258,5 +255,5 @@ The issue description clarifies which component is actually failing.
 
 ---
 
-**Last Updated:** February 16, 2026
+**Last Updated:** February 17, 2026
 # InternetHealthCheck
