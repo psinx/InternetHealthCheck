@@ -136,9 +136,11 @@ Logs are appended to the file and auto-rotated when exceeding 2MB.
 The `--reduce-disk-wear` flag minimizes SD card/storage wear by reading the log file history to intelligently suppress repetitive OK logs:
 
 **How it works:**
-- Reads the last `[eth0] OK` and `[wlan0] OK` lines from the log file
-- Compares their timestamps against the log file's modification time
-- If both OK entries are within 60 seconds of the last file write, they're from the last complete run
+- Reads the last entry (any status) for each interface from the log file
+- Checks if the last entry contains error markers (DOWN, Issue, Test: Fail) to detect state changes
+- If the last entry is an error, logs immediately (state changed from error to OK)
+- If both entries are OK, compares their timestamps against the log file's modification time
+- If both OK entries are within 60 seconds of the last file write, they're from the last logged run
 - When both are recent and both are OK, suppresses new OK logs (no write needed)
 - **Failures are always logged immediately**, regardless of the flag
 - **24-hour timeout**: Always logs after 24 hours of silence
@@ -162,8 +164,8 @@ The `--reduce-disk-wear` flag minimizes SD card/storage wear by reading the log 
 **Example behavior with `--reduce-disk-wear`:**
 - Run 1 (12:00): Logs OK for both interfaces
 - Runs 2-12 (12:05-13:00): Suppresses OK logs (within 24h, both still OK)
-- Run 13 (next day 12:00): Logs OK again (24h threshold passed)
-- DNS failure at any time: Logs immediately regardless of flag
+- Runs continue (13:05, 13:10...): Suppresses OK logs (within 24h window)
+- Run at 12:05 next day: Logs OK again (24+ hours since first log)
 
 **Example behavior with `--log-file` alone (no disk wear reduction):**
 - All runs: Logs OK every time (5 minute interval)
