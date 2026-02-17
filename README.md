@@ -1,12 +1,15 @@
 # Internet Health Check
 
-A comprehensive bash script for monitoring internet connectivity and DNS chain health, with complete test coverage and refactored for production use.
+A comprehensive bash script for monitoring internet connectivity and DNS chain health with complete test coverage.
 
 ## Quick Start
 
 ```bash
-# Run the health check
+# Run the health check (logs to stdout)
 ./internet_health_check.sh
+
+# Run the health check (logs to file)
+./internet_health_check.sh --log-file logs/internet_health.log
 
 # Run tests
 cd tests/
@@ -14,9 +17,6 @@ cd tests/
 
 # View logs
 tail -f logs/internet_health.log
-
-# Check status
-cat logs/last_status
 ```
 
 ## Overview
@@ -34,10 +34,9 @@ When a DNS failure is detected, the script identifies where in the chain the bre
 
 | File | Purpose |
 |------|---------|
-| `internet_health_check.sh` | Main script (PRODUCTION READY) |
-| `tests/test_internet_health_check.sh` | Test suite (10 tests, 100% pass rate) |
+| `internet_health_check.sh` | Main script |
+| `tests/test_internet_health_check.sh` | Test suite (9 tests, 100% pass rate) |
 | `logs/internet_health.log` | Monitoring logs (auto-rotated at 2MB) |
-| `logs/last_status` | Current status file |
 
 ## Script Features
 
@@ -47,14 +46,14 @@ When a DNS failure is detected, the script identifies where in the chain the bre
 
 Example output when DNS issue detected:
 ```
-2026-02-16 21:02:22 [HEALTH-CHECK] DOWN
-2026-02-16 21:02:22 [HEALTH-CHECK] Test: Fail via Pi-hole (127.0.0.1:53)
-2026-02-16 21:02:22 [HEALTH-CHECK] Test: Pass via dnscrypt-proxy (127.0.0.1:5053)
-2026-02-16 21:02:22 [HEALTH-CHECK] Test: Pass via Cloudflare public (1.1.1.1:53)
-2026-02-16 21:02:22 [HEALTH-CHECK] Issue: Pi-hole × dnscrypt-proxy → Cloudflare
-2026-02-16 21:02:22 [HEALTH-CHECK] Issue: Pi-hole forwarding
-2026-02-16 21:02:22 [HEALTH-CHECK] Issue: DNS issue detected. Connectivity still OK
-2026-02-16 21:02:22 [HEALTH-CHECK] DOWN
+2026-02-16 21:02:22 [INTERNET-HEALTH-CHECK] DOWN
+2026-02-16 21:02:22 [INTERNET-HEALTH-CHECK] Test: Fail via Pi-hole (127.0.0.1:53)
+2026-02-16 21:02:22 [INTERNET-HEALTH-CHECK] Test: Pass via dnscrypt-proxy (127.0.0.1:5053)
+2026-02-16 21:02:22 [INTERNET-HEALTH-CHECK] Test: Pass via Cloudflare public (1.1.1.1:53)
+2026-02-16 21:02:22 [INTERNET-HEALTH-CHECK] Issue: Pi-hole × dnscrypt-proxy → Cloudflare
+2026-02-16 21:02:22 [INTERNET-HEALTH-CHECK] Issue: Pi-hole forwarding
+2026-02-16 21:02:22 [INTERNET-HEALTH-CHECK] Issue: DNS issue detected. Connectivity still OK
+2026-02-16 21:02:22 [INTERNET-HEALTH-CHECK] DOWN
 ```
 
 **Key indicators:**
@@ -79,33 +78,45 @@ readonly MAX_LOG_SIZE=$((2 * 1024 * 1024)) # Log rotation size (2MB)
 readonly MAX_ROTATIONS=7                  # Number of rotated logs to keep
 ```
 
-## Script Output States
-
-The script saves state to `logs/last_status`:
-- `OK` - All systems operational
-- `DNS_ISSUE` - DNS problem detected but connectivity OK
-- `CONNECTIVITY_DOWN` - No internet connectivity
-
 ## Usage
 
-### Standalone Execution
+### Command Line Options
+```bash
+./internet_health_check.sh [OPTIONS]
+
+Options:
+  --log-file FILE    Write logs to FILE instead of stdout
+  -h, --help         Show help message
+```
+
+### Standalone Execution (logs to stdout)
 ```bash
 ./internet_health_check.sh
 ```
 
+Output will appear in the terminal:
+```
+2026-02-17 10:30:45 [INTERNET-HEALTH-CHECK] [eth0] OK
+2026-02-17 10:30:50 [INTERNET-HEALTH-CHECK] [wlan0] OK
+```
+
+### Log to File
+```bash
+./internet_health_check.sh --log-file logs/internet_health.log
+```
+
+Logs are appended to the file and auto-rotated when exceeding 2MB.
+
 ### Schedule with Cron
 ```bash
-# Run every 5 minutes
-*/5 * * * * ~/InternetHealthCheck/internet_health_check.sh
+# Run every 5 minutes, logging to file
+*/5 * * * * ~/InternetHealthCheck/internet_health_check.sh --log-file ~/InternetHealthCheck/logs/internet_health.log
 ```
 
 ### View Results
 ```bash
 # Real-time log viewing
 tail -f ~/InternetHealthCheck/logs/internet_health.log
-
-# View current status
-cat ~/InternetHealthCheck/logs/last_status
 
 # Check recent health checks (last 50 lines)
 tail -50 ~/InternetHealthCheck/logs/internet_health.log
@@ -119,19 +130,18 @@ Logs are automatically rotated when they exceed 2MB:
 
 ## Test Suite
 
-Comprehensive test coverage with 10 test scenarios:
+Comprehensive test coverage with 9 test scenarios:
 
 | Test | Coverage |
 |------|----------|
 | All systems OK | Verifies normal operation |
 | Connectivity DOWN | Ping failure detection |
-| Connectivity recovery | State transition after outage |
+| Repeated OK state | Multiple runs with OK state |
 | Pi-hole DNS fails | Individual service failure detection |
 | dnscrypt DNS fails | Individual service failure detection |
 | Cloudflare DNS fails | Individual service failure detection |
 | All DNS fails | Multiple service failure handling |
-| Repeated OK state | No spurious recovery messages |
-| DNS issue with OK connectivity | Partial failure state |
+| DNS issue with OK connectivity | Partial failure detection |
 | Partial failures | Multiple service combinations |
 
 ### Running Tests
@@ -145,41 +155,32 @@ cd tests/
 ./tests/test_internet_health_check.sh
 ```
 
-**Test Results:** ✅ 10 tests passed (100% pass rate)
+**Test Results:** ✅ 9 tests passed (100% pass rate)
 
-## Architecture & Refactoring
+## Architecture
 
 ### Code Organization
 
 ### Scenario 1: All Systems Healthy
 ```
-Log: [HEALTH-CHECK] OK
-Status: OK
+Log: [INTERNET-HEALTH-CHECK] OK
 ```
 
 ### Scenario 2: Pi-hole DNS Fails
 ```
-Log: [HEALTH-CHECK] DOWN
-Log: [HEALTH-CHECK] Test: Fail via Pi-hole (127.0.0.1:53)
-Log: [HEALTH-CHECK] Test: Pass via dnscrypt-proxy (127.0.0.1:5053)
-Log: [HEALTH-CHECK] Test: Pass via Cloudflare public (1.1.1.1:53)
-Log: [HEALTH-CHECK] Issue: Pi-hole × dnscrypt-proxy → Cloudflare
-Log: [HEALTH-CHECK] Issue: Pi-hole forwarding
-Log: [HEALTH-CHECK] Issue: DNS issue detected. Connectivity still OK
-Log: [HEALTH-CHECK] DOWN
-Status: DNS_ISSUE
+Log: [INTERNET-HEALTH-CHECK] DOWN
+Log: [INTERNET-HEALTH-CHECK] Test: Fail via Pi-hole (127.0.0.1:53)
+Log: [INTERNET-HEALTH-CHECK] Test: Pass via dnscrypt-proxy (127.0.0.1:5053)
+Log: [INTERNET-HEALTH-CHECK] Test: Pass via Cloudflare public (1.1.1.1:53)
+Log: [INTERNET-HEALTH-CHECK] Issue: Pi-hole × dnscrypt-proxy → Cloudflare
+Log: [INTERNET-HEALTH-CHECK] Issue: Pi-hole forwarding
+Log: [INTERNET-HEALTH-CHECK] Issue: DNS issue detected. Connectivity still OK
+Log: [INTERNET-HEALTH-CHECK] DOWN
 ```
 
 ### Scenario 3: No Internet Connectivity
 ```
-Log: [HEALTH-CHECK] ALERT - PING FAIL: 1.1.1.1 did not respond (connectivity outage)
-Status: CONNECTIVITY_DOWN
-```
-
-### Scenario 4: Connectivity Restored
-```
-Log: [HEALTH-CHECK] RECOVERED - Connectivity restored
-Status: OK
+Log: [INTERNET-HEALTH-CHECK] ALERT - PING FAIL: 1.1.1.1 did not respond (connectivity outage)
 ```
 
 ## DNS Chain Visualization

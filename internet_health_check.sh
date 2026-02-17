@@ -12,15 +12,17 @@ readonly PING_TIMEOUT=5
 readonly PING_COUNT=4
 
 readonly LOG_DIR="$HOME/InternetHealthCheck/logs"
-readonly LOG_FILE="$LOG_DIR/internet_health.log"
-readonly STATE_FILE="$LOG_DIR/last_status"
-readonly TAG="[HEALTH-CHECK]"
+readonly TAG="[INTERNET-HEALTH-CHECK]"
 
 readonly PIHOLE_PORT="53"
 readonly DNSCRYPT_PORT="5053"
 
 readonly MAX_LOG_SIZE=$((2 * 1024 * 1024))   # 2 MB
 readonly MAX_ROTATIONS=7
+
+# Log settings (can be overridden via --log-file flag)
+LOG_FILE=""
+LOG_TO_FILE=false
 
 # Initialize log directory
 mkdir -p "$LOG_DIR" 2>/dev/null
@@ -30,10 +32,20 @@ mkdir -p "$LOG_DIR" 2>/dev/null
 #=============================================================================
 
 log() {
-    echo "$(date '+%Y-%m-%d %H:%M:%S') ${TAG} $1" >> "$LOG_FILE"
+    local timestamp
+    timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    local message="$timestamp ${TAG} $1"
+    
+    if [[ "$LOG_TO_FILE" == "true" && -n "$LOG_FILE" ]]; then
+        echo "$message" >> "$LOG_FILE"
+    else
+        echo "$message" >&2
+    fi
 }
 
 rotate_log() {
+    [[ "$LOG_TO_FILE" != "true" || -z "$LOG_FILE" ]] && return
+    
     local size
     size=$(stat -c %s "$LOG_FILE" 2>/dev/null || echo 0)
     
@@ -57,10 +69,11 @@ rotate_log() {
 #=============================================================================
 
 check_connectivity() {
-    if ping -c "$PING_COUNT" -W "$PING_TIMEOUT" "$PING_TARGET" >/dev/null 2>&1; then
+    local interface=$1
+    if ping -I "$interface" -c "$PING_COUNT" -W "$PING_TIMEOUT" "$PING_TARGET" >/dev/null 2>&1; then
         echo "OK"
     else
-        log "ALERT - PING FAIL: $PING_TARGET did not respond (connectivity outage)"
+        log "ALERT - PING FAIL on $interface: $PING_TARGET did not respond (connectivity outage)"
         echo "DOWN"
     fi
 }
@@ -82,16 +95,16 @@ check_cloudflare_dns() {
 }
 
 log_dns_results() {
-    local pihole_ok=$1 dnscrypt_ok=$2 cloudflare_ok=$3
+    local interface=$1 pihole_ok=$2 dnscrypt_ok=$3 cloudflare_ok=$4
     
     # Only log detailed results if there's a problem
     if [[ "$pihole_ok" == "false" || "$dnscrypt_ok" == "false" || "$cloudflare_ok" == "false" ]]; then
-        [[ "$pihole_ok" == "false" ]] && log "Test: Fail via Pi-hole (127.0.0.1:53)"
-        [[ "$pihole_ok" == "true" ]] && log "Test: Pass via Pi-hole (127.0.0.1:53)"
-        [[ "$dnscrypt_ok" == "false" ]] && log "Test: Fail via dnscrypt-proxy (127.0.0.1:${DNSCRYPT_PORT})"
-        [[ "$dnscrypt_ok" == "true" ]] && log "Test: Pass via dnscrypt-proxy (127.0.0.1:${DNSCRYPT_PORT})"
-        [[ "$cloudflare_ok" == "false" ]] && log "Test: Fail via Cloudflare public (1.1.1.1:53)"
-        [[ "$cloudflare_ok" == "true" ]] && log "Test: Pass via Cloudflare public (1.1.1.1:53)"
+        [[ "$pihole_ok" == "false" ]] && log "[$interface] Test: Fail via Pi-hole (127.0.0.1:53)"
+        [[ "$pihole_ok" == "true" ]] && log "[$interface] Test: Pass via Pi-hole (127.0.0.1:53)"
+        [[ "$dnscrypt_ok" == "false" ]] && log "[$interface] Test: Fail via dnscrypt-proxy (127.0.0.1:${DNSCRYPT_PORT})"
+        [[ "$dnscrypt_ok" == "true" ]] && log "[$interface] Test: Pass via dnscrypt-proxy (127.0.0.1:${DNSCRYPT_PORT})"
+        [[ "$cloudflare_ok" == "false" ]] && log "[$interface] Test: Fail via Cloudflare public (1.1.1.1:53)"
+        [[ "$cloudflare_ok" == "true" ]] && log "[$interface] Test: Pass via Cloudflare public (1.1.1.1:53)"
     fi
 }
 
@@ -110,82 +123,100 @@ determine_failure_point() {
 }
 
 log_dns_diagnostics() {
-    local failure_point=$1
+    local interface=$1 failure_point=$2
     
     [[ -z "$failure_point" ]] && return
     
     case "$failure_point" in
         "Pi-hole")
-            log "Issue: Pi-hole × dnscrypt-proxy → Cloudflare"
-            log "Issue: Pi-hole forwarding"
+            log "[$interface] Issue: Pi-hole × dnscrypt-proxy → Cloudflare"
+            log "[$interface] Issue: Pi-hole forwarding"
             ;;
         "dnscrypt-proxy")
-            log "Issue: Pi-hole → dnscrypt-proxy × Cloudflare"
-            log "Issue: dnscrypt-proxy DoH to Cloudflare"
+            log "[$interface] Issue: Pi-hole → dnscrypt-proxy × Cloudflare"
+            log "[$interface] Issue: dnscrypt-proxy DoH to Cloudflare"
             ;;
         "Cloudflare")
-            log "Issue: Pi-hole → dnscrypt-proxy × Cloudflare"
-            log "Issue: upstream / Cloudflare connectivity"
+            log "[$interface] Issue: Pi-hole → dnscrypt-proxy × Cloudflare"
+            log "[$interface] Issue: upstream / Cloudflare connectivity"
             ;;
     esac
 }
 
 check_dns_chain() {
+    local interface=$1
     local pihole_ok dnscrypt_ok cloudflare_ok dns_ok failure_point
     
     pihole_ok=false; dnscrypt_ok=false; cloudflare_ok=false
     
     # Test each DNS endpoint
-    check_pihole_dns && pihole_ok=true || log "DOWN"
-    check_dnscrypt_dns && dnscrypt_ok=true || log "DOWN"
-    check_cloudflare_dns && cloudflare_ok=true || log "DOWN"
+    check_pihole_dns && pihole_ok=true
+    check_dnscrypt_dns && dnscrypt_ok=true
+    check_cloudflare_dns && cloudflare_ok=true
     
     # Determine overall DNS status
     [[ "$pihole_ok" == "true" && "$dnscrypt_ok" == "true" && "$cloudflare_ok" == "true" ]] && dns_ok=true || dns_ok=false
     
+    # If there's an error, log DOWN at start of block
+    if [[ "$dns_ok" == "false" ]]; then
+        log "[$interface] DOWN"
+    fi
+    
     # Log pass results if any failure occurred
-    log_dns_results "$pihole_ok" "$dnscrypt_ok" "$cloudflare_ok"
+    log_dns_results "$interface" "$pihole_ok" "$dnscrypt_ok" "$cloudflare_ok"
     
     # Identify and log break point
     failure_point=$(determine_failure_point "$pihole_ok" "$dnscrypt_ok" "$cloudflare_ok")
-    log_dns_diagnostics "$failure_point"
+    log_dns_diagnostics "$interface" "$failure_point"
+    
+    # If there's an error, log DOWN at end of block
+    if [[ "$dns_ok" == "false" ]]; then
+        log "[$interface] Issue: DNS issue detected. Connectivity still OK"
+        log "[$interface] DOWN"
+    fi
     
     echo "$dns_ok"
 }
 
 #=============================================================================
-# State management
+# Status reporting
 #=============================================================================
 
-get_previous_status() {
-    cat "$STATE_FILE" 2>/dev/null || echo "OK"
-}
-
-save_status() {
-    echo "$1" > "$STATE_FILE"
-}
-
 determine_current_status() {
-    local connectivity=$1 dns_ok=$2 previous_status=$3
+    local interface=$1 connectivity=$2 dns_ok=$3
     
     if [[ "$connectivity" == "DOWN" ]]; then
-        if [[ "$previous_status" != "CONNECTIVITY_DOWN" ]]; then
-            log "ALERT - CONNECTIVITY OUTAGE detected"
-        fi
+        log "[$interface] ALERT - CONNECTIVITY OUTAGE detected"
         echo "CONNECTIVITY_DOWN"
-    elif [[ "$previous_status" == "CONNECTIVITY_DOWN" ]]; then
-        log "RECOVERED - Connectivity restored"
-        echo "OK"
     else
         if [[ "$dns_ok" == "true" ]]; then
-            log "OK"
+            log "[$interface] OK"
             echo "OK"
         else
-            log "Issue: DNS issue detected. Connectivity still OK"
-            log "DOWN"
-            echo "DNS_ISSUE"
+            echo "OK"
         fi
     fi
+}
+
+#=============================================================================
+# Usage and argument parsing
+#=============================================================================
+
+usage() {
+    cat << EOF
+Usage: $0 [OPTIONS]
+
+Options:
+  --log-file FILE    Write logs to FILE instead of stdout
+  -h, --help         Show this help message
+
+Examples:
+  # Print to stdout (default)
+  ./internet_health_check.sh
+  
+  # Write to log file
+  ./internet_health_check.sh --log-file ~/InternetHealthCheck/logs/internet_health.log
+EOF
 }
 
 #=============================================================================
@@ -193,21 +224,50 @@ determine_current_status() {
 #=============================================================================
 
 main() {
+    # Parse arguments
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --log-file)
+                LOG_FILE="$2"
+                LOG_TO_FILE=true
+                mkdir -p "$(dirname "$LOG_FILE")" 2>/dev/null
+                shift 2
+                ;;
+            -h|--help)
+                usage
+                exit 0
+                ;;
+            *)
+                echo "Unknown option: $1" >&2
+                usage
+                exit 1
+                ;;
+        esac
+    done
+    
     rotate_log
     
-    # Check connectivity first
-    connectivity=$(check_connectivity)
+    # Define interfaces: wired first, then wireless
+    local interfaces=("eth0" "wlan0")
     
-    # Check DNS chain only if connectivity is OK
-    local dns_ok="true"
-    if [[ "$connectivity" == "OK" ]]; then
-        dns_ok=$(check_dns_chain)
-    fi
-    
-    # Determine status and save state
-    previous_status=$(get_previous_status)
-    current_status=$(determine_current_status "$connectivity" "$dns_ok" "$previous_status")
-    save_status "$current_status"
+    for interface in "${interfaces[@]}"; do
+        # Check if interface exists
+        if ! ip link show "$interface" >/dev/null 2>&1; then
+            continue
+        fi
+        
+        # Check connectivity first
+        connectivity=$(check_connectivity "$interface")
+        
+        # Check DNS chain only if connectivity is OK
+        local dns_ok="true"
+        if [[ "$connectivity" == "OK" ]]; then
+            dns_ok=$(check_dns_chain "$interface")
+        fi
+        
+        # Report current status
+        determine_current_status "$interface" "$connectivity" "$dns_ok" >/dev/null
+    done
 }
 
 main "$@"

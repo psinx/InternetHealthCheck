@@ -1,14 +1,13 @@
 #!/usr/bin/env bash
 
 # test_internet_health_check.sh - Functional test suite
-# Tests the refactored script for correct behavior
+# Tests the script for correct behavior
 
 set -euo pipefail
 
 # Configuration
 TEST_HOME="/tmp/healthcheck_test"
 TEST_LOG_FILE="$TEST_HOME/InternetHealthCheck/logs/internet_health.log"
-TEST_STATE_FILE="$TEST_HOME/InternetHealthCheck/logs/last_status"
 
 TESTS_PASSED=0
 TESTS_FAILED=0
@@ -17,7 +16,6 @@ TESTS_FAILED=0
 setup_test_env() {
     rm -rf "$TEST_HOME"
     mkdir -p "$TEST_HOME/InternetHealthCheck/logs"
-    echo "OK" > "$TEST_STATE_FILE"
 }
 
 cleanup_test_env() {
@@ -56,7 +54,6 @@ run_with_mocks() {
     if [[ "$reset_env" == "true" ]]; then
         rm -rf "$TEST_HOME"
         mkdir -p "$TEST_HOME/InternetHealthCheck/logs"
-        echo "OK" > "$TEST_STATE_FILE"
     fi
     
     # Create mock wrapper
@@ -65,6 +62,12 @@ run_with_mocks() {
 
 HOME="$TEST_HOME"
 export HOME
+
+# Override ip
+ip() {
+    # For interface checks, always return success
+    return 0
+}
 
 # Override ping
 ping() {
@@ -88,10 +91,10 @@ dig() {
     return 1
 }
 
-export -f ping dig
+export -f ip ping dig
 
-# Source and run the script (it calls main() at the end)
-source "$SCRIPT_PATH"
+# Source and run the script with log file flag
+source "$SCRIPT_PATH" --log-file "$TEST_HOME/InternetHealthCheck/logs/internet_health.log"
 TESTEOF
     
     chmod +x /tmp/run_test.sh
@@ -107,7 +110,6 @@ TESTEOF
     
     # Update paths for log checking
     TEST_LOG_FILE="$TEST_HOME/InternetHealthCheck/logs/internet_health.log"
-    TEST_STATE_FILE="$TEST_HOME/InternetHealthCheck/logs/last_status"
 }
 
 #=============================================================================
@@ -138,32 +140,25 @@ test_2_ping_fail() {
         assert_fail "Ping failure not detected"
     fi
     
-    if grep -q "CONNECTIVITY_DOWN" "$TEST_STATE_FILE"; then
-        assert_pass "State set to CONNECTIVITY_DOWN"
+    if log_contains "ALERT"; then
+        assert_pass "Alert logged for outage"
     else
-        assert_fail "State should be CONNECTIVITY_DOWN"
+        assert_fail "Alert should be logged for outage"
     fi
     cleanup_test_env
 }
 
-test_3_recovery() {
-    echo "TEST 3: Connectivity recovery"
+test_3_repeated_ok() {
+    echo "TEST 3: Repeated OK state checks"
     setup_test_env
-    
-    # First: down
-    run_with_mocks 1 0 0 0 false
-    if grep -q "CONNECTIVITY_DOWN" "$TEST_STATE_FILE"; then
-        assert_pass "Initial down state set"
-    else
-        assert_fail "Initial state should be CONNECTIVITY_DOWN"
-    fi
-    
-    # Second: up (preserve environment)
+    run_with_mocks 0 0 0 0
     run_with_mocks 0 0 0 0 false
-    if log_contains "RECOVERED"; then
-        assert_pass "Recovery message logged"
+    
+    local count=$(count_log_lines)
+    if [ "$count" -eq 4 ]; then
+        assert_pass "Multiple OK entries logged (2 per run for eth0+wlan0)"
     else
-        assert_fail "Recovery should be logged"
+        assert_fail "Should have 4 log entries, got $count"
     fi
     cleanup_test_env
 }
@@ -234,29 +229,8 @@ test_7_all_dns_fail() {
     cleanup_test_env
 }
 
-test_8_repeated_ok() {
-    echo "TEST 8: Repeated OK (no spurious recovery)"
-    setup_test_env
-    run_with_mocks 0 0 0 0
-    run_with_mocks 0 0 0 0 false
-    
-    local count=$(count_log_lines)
-    if [ "$count" -eq 2 ]; then
-        assert_pass "Two OK entries logged"
-    else
-        assert_fail "Should have 2 log entries, got $count"
-    fi
-    
-    if ! log_contains "RECOVERED"; then
-        assert_pass "No spurious recovery on repeated OK"
-    else
-        assert_fail "Recovery message should not appear"
-    fi
-    cleanup_test_env
-}
-
-test_9_dns_issue_with_connectivity() {
-    echo "TEST 9: DNS issue with OK connectivity"
+test_8_dns_issue_with_connectivity() {
+    echo "TEST 8: DNS issue with OK connectivity"
     setup_test_env
     run_with_mocks 0 1 1 1
     
@@ -265,17 +239,11 @@ test_9_dns_issue_with_connectivity() {
     else
         assert_fail "DNS issue not logged"
     fi
-    
-    if grep -q "DNS_ISSUE" "$TEST_STATE_FILE"; then
-        assert_pass "State set to DNS_ISSUE"
-    else
-        assert_fail "State should be DNS_ISSUE"
-    fi
     cleanup_test_env
 }
 
-test_10_pihole_and_dnscrypt_fail() {
-    echo "TEST 10: Pi-hole and dnscrypt fail, Cloudflare OK"
+test_9_pihole_and_dnscrypt_fail() {
+    echo "TEST 9: Pi-hole and dnscrypt fail, Cloudflare OK"
     setup_test_env
     run_with_mocks 0 1 1 0
     
@@ -316,7 +284,7 @@ main() {
     fi
     
     echo "=========================================="
-    echo "Internet Health Check Test Suite"
+    echo "Internet Health Check - Stateless Monitoring Test Suite"
     echo "Script: $SCRIPT_PATH"
     echo "=========================================="
     echo ""
@@ -325,7 +293,7 @@ main() {
     echo ""
     test_2_ping_fail
     echo ""
-    test_3_recovery
+    test_3_repeated_ok
     echo ""
     test_4_pihole_dns_fail
     echo ""
@@ -335,11 +303,9 @@ main() {
     echo ""
     test_7_all_dns_fail
     echo ""
-    test_8_repeated_ok
+    test_8_dns_issue_with_connectivity
     echo ""
-    test_9_dns_issue_with_connectivity
-    echo ""
-    test_10_pihole_and_dnscrypt_fail
+    test_9_pihole_and_dnscrypt_fail
     
     echo ""
     echo "=========================================="
