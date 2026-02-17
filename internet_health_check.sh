@@ -242,16 +242,12 @@ determine_current_status() {
     
     if [[ "$connectivity" == "DOWN" ]]; then
         log "[$interface] DOWN - CONNECTIVITY OUTAGE detected"
-        echo "CONNECTIVITY_DOWN"
     else
         if [[ "$dns_ok" == "true" ]]; then
             # Only log OK if disk wear reduction allows it
             if should_log_ok; then
                 log "[$interface] OK"
             fi
-            echo "OK"
-        else
-            echo "OK"
         fi
     fi
 }
