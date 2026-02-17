@@ -295,7 +295,7 @@ Examples:
   ./internet_health_check.sh
   
   # Write to log file
-  ./internet_health_check.sh --log-file ~/InternetHealthCheck/logs/internet_health.log
+  ./internet_health_check.sh --log-file logs/internet_health.log
   
   # Reduce disk wear on RPi (with file logging)
   ./internet_health_check.sh --log-file logs/internet_health.log --reduce-disk-wear
