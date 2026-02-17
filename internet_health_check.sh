@@ -23,6 +23,7 @@ readonly MAX_ROTATIONS=7
 # Log settings (can be overridden via --log-file flag)
 LOG_FILE=""
 LOG_TO_FILE=false
+REDUCE_DISK_WEAR=false
 
 # Initialize log directory
 mkdir -p "$LOG_DIR" 2>/dev/null
@@ -41,6 +42,53 @@ log() {
     else
         echo "$message" >&2
     fi
+}
+
+should_log_ok() {
+    # If disk wear reduction is disabled, always log
+    [[ "$REDUCE_DISK_WEAR" != "true" ]] && return 0
+    
+    # If not logging to file, always log
+    [[ "$LOG_TO_FILE" != "true" ]] && return 0
+    
+    # If log file doesn't exist, log it
+    [[ ! -f "$LOG_FILE" ]] && return 0
+    
+    # Check if last log entry is older than 24 hours
+    local last_modified
+    last_modified=$(stat -c %Y "$LOG_FILE" 2>/dev/null) || last_modified=0
+    local current_time
+    current_time=$(date +%s)
+    local diff=$(( current_time - last_modified ))
+    local hours_24=$(( 24 * 60 * 60 ))
+    
+    # If more than 24 hours, always log
+    (( diff >= hours_24 )) && return 0
+    
+    # Check if the last run had both interfaces OK
+    # Count how many lines in the log have interface markers to find last run
+    local lines_with_eth0 lines_with_wlan0
+    lines_with_eth0=$(grep -c "\[eth0\]" "$LOG_FILE" 2>/dev/null) || lines_with_eth0=0
+    lines_with_wlan0=$(grep -c "\[wlan0\]" "$LOG_FILE" 2>/dev/null) || lines_with_wlan0=0
+    lines_with_eth0=${lines_with_eth0:-0}
+    lines_with_wlan0=${lines_with_wlan0:-0}
+    
+    # Need at least one of each to infer state
+    (( lines_with_eth0 == 0 || lines_with_wlan0 == 0 )) && return 0
+    
+    # Check if the last lines for both interfaces are OK (not DOWN)
+    local last_eth0_line=$(grep "\[eth0\]" "$LOG_FILE" | tail -1)
+    local last_wlan0_line=$(grep "\[wlan0\]" "$LOG_FILE" | tail -1)
+    
+    # If both last lines are OK (not DOWN or issue), suppress logging
+    if [[ "$last_eth0_line" =~ OK && "$last_wlan0_line" =~ OK ]] && 
+       [[ ! "$last_eth0_line" =~ DOWN && ! "$last_wlan0_line" =~ DOWN ]]; then
+        # Return 1 (false) to suppress logging
+        return 1
+    fi
+    
+    # Otherwise log it
+    return 0
 }
 
 rotate_log() {
@@ -190,7 +238,10 @@ determine_current_status() {
         echo "CONNECTIVITY_DOWN"
     else
         if [[ "$dns_ok" == "true" ]]; then
-            log "[$interface] OK"
+            # Only log OK if disk wear reduction allows it
+            if should_log_ok; then
+                log "[$interface] OK"
+            fi
             echo "OK"
         else
             echo "OK"
@@ -207,8 +258,10 @@ usage() {
 Usage: $0 [OPTIONS]
 
 Options:
-  --log-file FILE    Write logs to FILE instead of stdout
-  -h, --help         Show this help message
+  --log-file FILE       Write logs to FILE instead of stdout
+  --reduce-disk-wear    Reduce log writes: skip OK logs if < 24h since last entry
+                        (failures are always logged immediately)
+  -h, --help            Show this help message
 
 Examples:
   # Print to stdout (default)
@@ -216,6 +269,9 @@ Examples:
   
   # Write to log file
   ./internet_health_check.sh --log-file ~/InternetHealthCheck/logs/internet_health.log
+  
+  # Reduce disk wear on RPi (with file logging)
+  ./internet_health_check.sh --log-file logs/internet_health.log --reduce-disk-wear
 EOF
 }
 
@@ -232,6 +288,10 @@ main() {
                 LOG_TO_FILE=true
                 mkdir -p "$(dirname "$LOG_FILE")" 2>/dev/null
                 shift 2
+                ;;
+            --reduce-disk-wear)
+                REDUCE_DISK_WEAR=true
+                shift
                 ;;
             -h|--help)
                 usage

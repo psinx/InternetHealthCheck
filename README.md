@@ -85,8 +85,11 @@ readonly MAX_ROTATIONS=7                  # Number of rotated logs to keep
 ./internet_health_check.sh [OPTIONS]
 
 Options:
-  --log-file FILE    Write logs to FILE instead of stdout
-  -h, --help         Show help message
+  --log-file FILE       Write logs to FILE instead of stdout
+  --reduce-disk-wear    Reduce disk writes for RPi/SD card/USB
+                        Skips logging OK status if < 24h since last entry
+                        Failures are always logged immediately
+  -h, --help            Show help message
 ```
 
 ### Standalone Execution (logs to stdout)
@@ -111,7 +114,40 @@ Logs are appended to the file and auto-rotated when exceeding 2MB.
 ```bash
 # Run every 5 minutes, logging to file
 */5 * * * * ~/InternetHealthCheck/internet_health_check.sh --log-file ~/InternetHealthCheck/logs/internet_health.log
+
+# Run every 5 minutes with disk wear reduction (RPi/SD card optimization)
+*/5 * * * * ~/InternetHealthCheck/internet_health_check.sh --log-file ~/InternetHealthCheck/logs/internet_health.log --reduce-disk-wear
 ```
+
+### Disk Wear Reduction (for RPi)
+
+The `--reduce-disk-wear` flag minimizes SD card/storage wear by reading the log file history to intelligently suppress repetitive OK logs:
+
+**How it works:**
+- Reads the last recorded status for each interface from the log file
+- If both interfaces were OK in the previous run AND less than 24 hours have passed, suppresses new OK logs  
+- **Failures are always logged immediately**, regardless of the flag
+- State is inferred from the log file itself - no separate state file is created
+
+**Why this matters for RPi:**
+- Every write to an SD card reduces its lifespan
+- On a 5-minute cron schedule: saves ~98% of disk writes when system is healthy
+- Maintains complete failure alerting - issues are logged immediately
+
+**Usage with cron:**
+```bash
+# Reduces writes while maintaining immediate failure alerts
+*/5 * * * * ~/InternetHealthCheck/internet_health_check.sh --log-file ~/logs/internet_health.log --reduce-disk-wear
+```
+
+**Example behavior with `--reduce-disk-wear`:**
+- Run 1 (12:00): Logs OK for both interfaces
+- Runs 2-12 (12:05-13:00): Suppresses OK logs (within 24h, both still OK)
+- Run 13 (next day 12:00): Logs OK again (24h threshold passed)
+- DNS failure at any time: Logs immediately regardless of flag
+
+**Example behavior with `--log-file` alone (no disk wear reduction):**
+- All runs: Logs OK every time (5 minute interval)
 
 ### View Results
 ```bash
