@@ -176,20 +176,26 @@ Logs are automatically rotated when they exceed 2MB:
 
 ## Test Suite
 
-The test suite includes 9 test functions covering 12 individual test assertions (100% passing):
+The test suite includes 15 test functions covering complete script functionality (100% passing):
 
-| Test Function | Assertions | Coverage |
-|---|---|---|
-| Test 1: All systems OK | 1 | Verifies normal operation |
-| Test 2: Connectivity DOWN | 2 | Ping failure detection & alert logging |
-| Test 3: Repeated OK state | 1 | Multiple consecutive runs with OK state |
-| Test 4: Pi-hole DNS fails | 2 | Individual service failure & diagnostics |
-| Test 5: dnscrypt DNS fails | 1 | Individual service failure detection |
-| Test 6: Cloudflare DNS fails | 2 | Individual service failure & chain notation |
-| Test 7: All DNS services fail | 1 | Multiple service failure handling |
-| Test 8: DNS issue with OK connectivity | 1 | Partial failure detection |
-| Test 9: Pi-hole and dnscrypt fail | 1 | Multiple service combinations |
-| **Total** | **12** | **Coverage** |
+| Test Function | Coverage |
+|---|---|
+| Test 1: All systems OK | Normal operation |
+| Test 2: Connectivity DOWN | Ping failure detection & alerting |
+| Test 3: Repeated OK state | Multiple consecutive OK checks |
+| Test 4: Pi-hole DNS fails | Individual DNS service failure |
+| Test 5: dnscrypt DNS fails | Individual DNS service failure |
+| Test 6: Cloudflare DNS fails | Individual DNS service failure |
+| Test 7: All DNS services fail | Multiple service failures |
+| Test 8: DNS issue with OK connectivity | Partial failure detection |
+| Test 9: Pi-hole and dnscrypt fail | Complex DNS chain failures |
+| Test 10: should_log_ok() scenarios | Disk wear reduction logic |
+| Test 11: should_log_ok() suppression | Recent OK entry handling |
+| Test 12: should_log_ok() state change | Error-to-OK state transitions |
+| Test 13: rotate_log() small files | No rotation for small logs |
+| Test 14: rotate_log() large files | Log rotation at 2MB |
+| Test 15: usage() output | Help message display |
+| **Total** | **15 tests** |
 
 ### Running Tests
 
@@ -202,7 +208,7 @@ cd tests/
 ./tests/test_internet_health_check.sh
 ```
 
-**Test Results:** ✅ 12 tests passed (100% pass rate)
+**Test Results:** ✅ 15 tests passed (100% pass rate)
 
 ## Architecture
 

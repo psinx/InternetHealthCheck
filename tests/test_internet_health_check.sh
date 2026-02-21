@@ -270,6 +270,234 @@ test_9_pihole_and_dnscrypt_fail() {
     cleanup_test_env
 }
 
+test_10_should_log_ok_scenarios() {
+    echo "TEST 10: should_log_ok() function - multiple scenarios"
+    setup_test_env
+    
+    # Test 1: Disabled reduction should always return true
+    cat > /tmp/test_scenarios.sh << 'TESTEOF'
+#!/bin/bash
+source "$SCRIPT_PATH"
+
+# Scenario 1: Disk wear reduction disabled
+REDUCE_DISK_WEAR=false
+LOG_TO_FILE=true
+LOG_FILE="$TEST_LOG_FILE"
+if should_log_ok eth0; then
+    echo "scenario1=pass"
+else
+    echo "scenario1=fail"
+fi
+
+# Scenario 2: Not logging to file
+REDUCE_DISK_WEAR=true
+LOG_TO_FILE=false
+if should_log_ok eth0; then
+    echo "scenario2=pass"
+else
+    echo "scenario2=fail"
+fi
+
+# Scenario 3: Log file doesn't exist
+REDUCE_DISK_WEAR=true
+LOG_TO_FILE=true
+LOG_FILE="/nonexistent/file.log"
+if should_log_ok eth0; then
+    echo "scenario3=pass"
+else
+    echo "scenario3=fail"
+fi
+
+# Scenario 4: Old log file (>24h)
+REDUCE_DISK_WEAR=true
+LOG_TO_FILE=true
+LOG_FILE="$TEST_LOG_FILE"
+mkdir -p "$(dirname "$TEST_LOG_FILE")"
+echo "2026-01-01 10:00:00 [INTERNET-HEALTH-CHECK] [eth0] OK" > "$TEST_LOG_FILE"
+if should_log_ok eth0; then
+    echo "scenario4=pass"
+else
+    echo "scenario4=fail"
+fi
+TESTEOF
+    chmod +x /tmp/test_scenarios.sh
+    
+    local results=$(SCRIPT_PATH="$SCRIPT_PATH" TEST_LOG_FILE="$TEST_LOG_FILE" bash /tmp/test_scenarios.sh 2>/dev/null)
+    
+    if echo "$results" | grep -q "scenario1=pass" && \
+       echo "$results" | grep -q "scenario2=pass" && \
+       echo "$results" | grep -q "scenario3=pass" && \
+       echo "$results" | grep -q "scenario4=pass"; then
+        assert_pass "should_log_ok handles all scenarios correctly"
+    else
+        assert_fail "should_log_ok scenario test failed"
+    fi
+    cleanup_test_env
+}
+
+test_11_should_log_ok_recent_suppression() {
+    echo "TEST 11: should_log_ok() suppresses recent OK entries"
+    setup_test_env
+    
+    mkdir -p "$(dirname "$TEST_LOG_FILE")"
+    local recent_time=$(date '+%Y-%m-%d %H:%M:%S')
+    echo "$recent_time [INTERNET-HEALTH-CHECK] [eth0] OK" > "$TEST_LOG_FILE"
+    
+    cat > /tmp/test_recent.sh << 'TESTEOF'
+#!/bin/bash
+source "$SCRIPT_PATH"
+REDUCE_DISK_WEAR=true
+LOG_TO_FILE=true
+LOG_FILE="$TEST_LOG_FILE"
+sleep 1
+if should_log_ok eth0; then
+    echo "suppress=false"
+else
+    echo "suppress=true"
+fi
+TESTEOF
+    chmod +x /tmp/test_recent.sh
+    
+    local result=$(SCRIPT_PATH="$SCRIPT_PATH" TEST_LOG_FILE="$TEST_LOG_FILE" bash /tmp/test_recent.sh 2>/dev/null)
+    if [[ "$result" == "suppress=true" ]]; then
+        assert_pass "should_log_ok suppresses recent OK entries"
+    else
+        assert_fail "should_log_ok should suppress recent OK, got: $result"
+    fi
+    cleanup_test_env
+}
+
+test_12_should_log_ok_error_state_change() {
+    echo "TEST 12: should_log_ok() logs on error-to-OK state change"
+    setup_test_env
+    
+    mkdir -p "$(dirname "$TEST_LOG_FILE")"
+    local recent_time=$(date '+%Y-%m-%d %H:%M:%S')
+    echo "$recent_time [INTERNET-HEALTH-CHECK] [eth0] DOWN" > "$TEST_LOG_FILE"
+    
+    cat > /tmp/test_error.sh << 'TESTEOF'
+#!/bin/bash
+source "$SCRIPT_PATH"
+REDUCE_DISK_WEAR=true
+LOG_TO_FILE=true
+LOG_FILE="$TEST_LOG_FILE"
+if should_log_ok eth0; then
+    echo "suppress=false"
+else
+    echo "suppress=true"
+fi
+TESTEOF
+    chmod +x /tmp/test_error.sh
+    
+    local result=$(SCRIPT_PATH="$SCRIPT_PATH" TEST_LOG_FILE="$TEST_LOG_FILE" bash /tmp/test_error.sh 2>/dev/null)
+    if [[ "$result" == "suppress=false" ]]; then
+        assert_pass "should_log_ok logs when state changed from error"
+    else
+        assert_fail "should_log_ok should log after error, got: $result"
+    fi
+    cleanup_test_env
+}
+
+test_13_rotate_log_no_rotation() {
+    echo "TEST 13: rotate_log() doesn't rotate small files"
+    setup_test_env
+    
+    mkdir -p "$(dirname "$TEST_LOG_FILE")"
+    echo "Small log file" > "$TEST_LOG_FILE"
+    
+    cat > /tmp/test_rotate.sh << 'TESTEOF'
+#!/bin/bash
+source "$SCRIPT_PATH"
+LOG_TO_FILE=true
+LOG_FILE="$TEST_LOG_FILE"
+rotate_log
+# Check if rotated file exists
+if [ -f "$TEST_LOG_FILE.1.gz" ]; then
+    echo "rotated=true"
+else
+    echo "rotated=false"
+fi
+TESTEOF
+    chmod +x /tmp/test_rotate.sh
+    
+    local result=$(SCRIPT_PATH="$SCRIPT_PATH" TEST_LOG_FILE="$TEST_LOG_FILE" bash /tmp/test_rotate.sh 2>/dev/null)
+    if [[ "$result" == "rotated=false" ]]; then
+        assert_pass "rotate_log doesn't rotate small files"
+    else
+        assert_fail "Small files should not rotate, got: $result"
+    fi
+    cleanup_test_env
+}
+
+test_14_rotate_log_large_file() {
+    echo "TEST 14: rotate_log() rotates files exceeding 2MB"
+    setup_test_env
+    
+    mkdir -p "$(dirname "$TEST_LOG_FILE")"
+    
+    # Create a file larger than 2MB with content
+    # Each line is ~52 bytes, so 42000 lines gives us ~2.1MB
+    {
+        for ((i=0; i<42000; i++)); do
+            echo "2026-02-20 15:55:08 [INTERNET-HEALTH-CHECK] [eth0] OK"
+        done
+    } > "$TEST_LOG_FILE" &
+    wait
+    
+    # Verify file size before rotation
+    local filesize=$(stat -c%s "$TEST_LOG_FILE" 2>/dev/null || echo 0)
+    
+    cat > /tmp/test_rotate2.sh << 'TESTEOF'
+#!/bin/bash
+source "$SCRIPT_PATH"
+LOG_TO_FILE=true
+LOG_FILE="$TEST_LOG_FILE"
+rotate_log
+# Check if rotated files exist
+if [ -f "$TEST_LOG_FILE.1.gz" ] || [ -f "$TEST_LOG_FILE.1" ]; then
+    echo "rotated=true"
+else
+    echo "rotated=false"
+fi
+# Also check file size after rotation
+if [ -s "$TEST_LOG_FILE" ]; then
+    echo "new_file_exists=true"
+else
+    echo "new_file_exists=false"
+fi
+TESTEOF
+    chmod +x /tmp/test_rotate2.sh
+    
+    local result=$(SCRIPT_PATH="$SCRIPT_PATH" TEST_LOG_FILE="$TEST_LOG_FILE" bash /tmp/test_rotate2.sh 2>/dev/null)
+    if echo "$result" | grep -q "rotated=true"; then
+        assert_pass "rotate_log rotates files exceeding 2MB"
+    else
+        assert_fail "Large files should be rotated (file was $filesize bytes), got: $result"
+    fi
+    cleanup_test_env
+}
+
+test_15_usage_output() {
+    echo "TEST 15: usage() displays help message"
+    
+    cat > /tmp/test_usage.sh << 'TESTEOF'
+#!/bin/bash
+source "$SCRIPT_PATH"
+usage 2>&1 | grep -q "Usage:" && echo "has_usage=true" || echo "has_usage=false"
+usage 2>&1 | grep -q "\--log-file" && echo "has_log_file=true" || echo "has_log_file=false"
+TESTEOF
+    chmod +x /tmp/test_usage.sh
+    
+    local usage_result=$(SCRIPT_PATH="$SCRIPT_PATH" bash /tmp/test_usage.sh 2>/dev/null | grep "has_usage")
+    local logfile_result=$(SCRIPT_PATH="$SCRIPT_PATH" bash /tmp/test_usage.sh 2>/dev/null | grep "has_log_file")
+    
+    if [[ "$usage_result" == "has_usage=true" && "$logfile_result" == "has_log_file=true" ]]; then
+        assert_pass "usage() outputs correct help message"
+    else
+        assert_fail "usage() missing help content"
+    fi
+}
+
 #=============================================================================
 # Main
 #=============================================================================
@@ -319,6 +547,18 @@ main() {
     test_8_dns_issue_with_connectivity
     echo ""
     test_9_pihole_and_dnscrypt_fail
+    echo ""
+    test_10_should_log_ok_scenarios
+    echo ""
+    test_11_should_log_ok_recent_suppression
+    echo ""
+    test_12_should_log_ok_error_state_change
+    echo ""
+    test_13_rotate_log_no_rotation
+    echo ""
+    test_14_rotate_log_large_file
+    echo ""
+    test_15_usage_output
     
     echo ""
     echo "=========================================="

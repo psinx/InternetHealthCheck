@@ -45,6 +45,8 @@ log() {
 }
 
 should_log_ok() {
+    local interface=$1
+    
     # If disk wear reduction is disabled, always log
     [[ "$REDUCE_DISK_WEAR" != "true" ]] && return 0
     
@@ -65,45 +67,37 @@ should_log_ok() {
     # If more than 24 hours since last write, always log
     (( diff >= hours_24 )) && return 0
     
-    # Find the LAST entry (any status) for each interface to detect state changes
-    local last_eth0_entry last_wlan0_entry
-    local last_eth0_time last_wlan0_time
+    # Find the LAST entry (any status) for THIS interface to detect state changes
+    local last_entry
+    last_entry=$(grep "\[$interface\]" "$LOG_FILE" 2>/dev/null | tail -1)
     
-    last_eth0_entry=$(grep "\[eth0\]" "$LOG_FILE" 2>/dev/null | tail -1)
-    last_wlan0_entry=$(grep "\[wlan0\]" "$LOG_FILE" 2>/dev/null | tail -1)
+    # If no previous entry exists, log it
+    [[ -z "$last_entry" ]] && return 0
     
-    # If we don't have both, we can't suppress
-    [[ -z "$last_eth0_entry" || -z "$last_wlan0_entry" ]] && return 0
-    
-    # If the last entries are DOWN or contain error markers, state changed - log it
-    if [[ "$last_eth0_entry" =~ DOWN ]] || [[ "$last_wlan0_entry" =~ DOWN ]] || \
-       [[ "$last_eth0_entry" =~ Issue ]] || [[ "$last_wlan0_entry" =~ Issue ]] || \
-       [[ "$last_eth0_entry" =~ Test:\ Fail ]] || [[ "$last_wlan0_entry" =~ Test:\ Fail ]]; then
+    # If the last entry is DOWN or contains error markers, state changed - log it
+    if [[ "$last_entry" =~ DOWN ]] || [[ "$last_entry" =~ Issue ]] || [[ "$last_entry" =~ Test:\ Fail ]]; then
         return 0  # Log it - state changed from error to OK
     fi
     
-    # Both last entries must be OK to consider suppressing
-    if [[ ! "$last_eth0_entry" =~ OK ]] || [[ ! "$last_wlan0_entry" =~ OK ]]; then
+    # Last entry must be OK to consider suppressing
+    if [[ ! "$last_entry" =~ OK ]]; then
         return 0  # Log it - state changed
     fi
     
-    # Extract timestamps (format: 2026-02-17 12:25:04)
-    last_eth0_time=$(echo "$last_eth0_entry" | awk '{print $1 " " $2}')
-    last_wlan0_time=$(echo "$last_wlan0_entry" | awk '{print $1 " " $2}')
+    # Extract timestamp (format: 2026-02-17 12:25:04)
+    local last_time
+    last_time=$(echo "$last_entry" | awk '{print $1 " " $2}')
     
     # Convert to Unix time
-    local eth0_sec wlan0_sec
-    eth0_sec=$(date -d "$last_eth0_time" +%s 2>/dev/null) || eth0_sec=0
-    wlan0_sec=$(date -d "$last_wlan0_time" +%s 2>/dev/null) || wlan0_sec=0
+    local last_sec
+    last_sec=$(date -d "$last_time" +%s 2>/dev/null) || last_sec=0
     
-    # Check if both are within 60 seconds of log file's mod time
-    local eth0_diff=$(( eth0_sec > log_mod_time ? eth0_sec - log_mod_time : log_mod_time - eth0_sec ))
-    local wlan0_diff=$(( wlan0_sec > log_mod_time ? wlan0_sec - log_mod_time : log_mod_time - wlan0_sec ))
+    # Check if within 60 seconds of log file's mod time
+    local time_diff=$(( last_sec > log_mod_time ? last_sec - log_mod_time : log_mod_time - last_sec ))
     
-    # Both must be recent (within 60 seconds of last write) to be from same run
-    if (( eth0_diff <= 60 && wlan0_diff <= 60 )); then
-        # Both are recent OK entries from the last run - suppress logging
-        return 1
+    # If recent OK entry from last run, suppress logging (no write needed)
+    if (( time_diff <= 60 )); then
+        return 1  # Suppress
     fi
     
     # Otherwise log it
@@ -269,7 +263,7 @@ determine_current_status() {
     else
         if [[ "$dns_ok" == "true" ]]; then
             # Only log OK if disk wear reduction allows it
-            if should_log_ok; then
+            if should_log_ok "$interface"; then
                 log "[$interface] OK"
             fi
         fi
