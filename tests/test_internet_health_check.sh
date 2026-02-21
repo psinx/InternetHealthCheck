@@ -60,23 +60,12 @@ run_with_mocks() {
     cat > /tmp/run_test.sh << 'TESTEOF'
 #!/bin/bash
 
-# Force Linux code paths so ip/ping/dig mocks work on both Linux and macOS
-OS_TYPE=linux
-export OS_TYPE
-
 HOME="$TEST_HOME"
 export HOME
 
 # Override ip
 ip() {
-    # Handle: ip -4 addr show up  (used by get_active_interfaces)
-    if [[ "$*" =~ "-4" && "$*" =~ "addr show up" ]]; then
-        echo "2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500"
-        echo "    inet 192.168.1.100/24 brd 192.168.1.255 scope global eth0"
-        echo "3: wlan0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500"
-        echo "    inet 192.168.1.101/24 brd 192.168.1.255 scope global wlan0"
-        return 0
-    elif [[ "$*" =~ "addr show" ]]; then
+    if [[ "$*" =~ "addr show" ]]; then
         # Return mock IP address for interface
         if [[ "$*" =~ "eth0" ]]; then
             echo "2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500"
@@ -124,7 +113,6 @@ TESTEOF
     chmod +x /tmp/run_test.sh
     
     # Run with mocked values
-    OS_TYPE=linux \
     PING_MOCK="$ping_result" \
     PIHOLE_MOCK="$pihole_result" \
     DNSCRYPT_MOCK="$dnscrypt_result" \
@@ -289,8 +277,6 @@ test_10_should_log_ok_scenarios() {
     # Test 1: Disabled reduction should always return true
     cat > /tmp/test_scenarios.sh << 'TESTEOF'
 #!/bin/bash
-OS_TYPE=linux
-export OS_TYPE
 source "$SCRIPT_PATH"
 
 # Scenario 1: Disk wear reduction disabled
@@ -359,8 +345,6 @@ test_11_should_log_ok_recent_suppression() {
     
     cat > /tmp/test_recent.sh << 'TESTEOF'
 #!/bin/bash
-OS_TYPE=linux
-export OS_TYPE
 source "$SCRIPT_PATH"
 REDUCE_DISK_WEAR=true
 LOG_TO_FILE=true
@@ -393,8 +377,6 @@ test_12_should_log_ok_error_state_change() {
     
     cat > /tmp/test_error.sh << 'TESTEOF'
 #!/bin/bash
-OS_TYPE=linux
-export OS_TYPE
 source "$SCRIPT_PATH"
 REDUCE_DISK_WEAR=true
 LOG_TO_FILE=true
@@ -425,8 +407,6 @@ test_13_rotate_log_no_rotation() {
     
     cat > /tmp/test_rotate.sh << 'TESTEOF'
 #!/bin/bash
-OS_TYPE=linux
-export OS_TYPE
 source "$SCRIPT_PATH"
 LOG_TO_FILE=true
 LOG_FILE="$TEST_LOG_FILE"
@@ -469,8 +449,6 @@ test_14_rotate_log_large_file() {
     
     cat > /tmp/test_rotate2.sh << 'TESTEOF'
 #!/bin/bash
-OS_TYPE=linux
-export OS_TYPE
 source "$SCRIPT_PATH"
 LOG_TO_FILE=true
 LOG_FILE="$TEST_LOG_FILE"
@@ -504,8 +482,6 @@ test_15_usage_output() {
     
     cat > /tmp/test_usage.sh << 'TESTEOF'
 #!/bin/bash
-OS_TYPE=linux
-export OS_TYPE
 source "$SCRIPT_PATH"
 usage 2>&1 | grep -q "Usage:" && echo "has_usage=true" || echo "has_usage=false"
 usage 2>&1 | grep -q "\--log-file" && echo "has_log_file=true" || echo "has_log_file=false"

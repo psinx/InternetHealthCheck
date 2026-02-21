@@ -20,12 +20,6 @@ readonly DNSCRYPT_PORT="5053"
 readonly MAX_LOG_SIZE=$((2 * 1024 * 1024))   # 2 MB
 readonly MAX_ROTATIONS=7
 
-# OS detection (can be overridden by setting OS_TYPE before sourcing, e.g. in tests)
-case "$(uname -s)" in
-    Darwin) OS_TYPE="${OS_TYPE:-macos}" ;;
-    *)      OS_TYPE="${OS_TYPE:-linux}" ;;
-esac
-
 # Log settings (can be overridden via --log-file flag)
 LOG_FILE=""
 LOG_TO_FILE=false
@@ -33,56 +27,6 @@ REDUCE_DISK_WEAR=false
 
 # Initialize log directory
 mkdir -p "$LOG_DIR" 2>/dev/null
-
-#=============================================================================
-# Platform helpers
-#=============================================================================
-
-# List active interfaces that have an IPv4 address (excludes loopback)
-get_active_interfaces() {
-    if [[ "$OS_TYPE" == "macos" ]]; then
-        ifconfig | awk '/^[a-z][a-z0-9]*:/{iface=substr($1,1,length($1)-1)} /\binet [0-9]/{if (iface !~ /^lo/) print iface}' | sort -u
-    else
-        ip -4 addr show up | awk '/inet /{print $NF}' | grep -v '^lo$'
-    fi
-}
-
-# Get the primary IPv4 address of an interface
-get_local_ip() {
-    local interface=$1
-    if [[ "$OS_TYPE" == "macos" ]]; then
-        ipconfig getifaddr "$interface" 2>/dev/null
-    else
-        ip -4 addr show "$interface" 2>/dev/null | grep -oE 'inet [0-9.]+' | awk '{print $2}' | head -1
-    fi
-}
-
-# File size in bytes
-file_size() {
-    if [[ "$OS_TYPE" == "macos" ]]; then
-        stat -f %z "$1" 2>/dev/null || echo 0
-    else
-        stat -c %s "$1" 2>/dev/null || echo 0
-    fi
-}
-
-# File modification time as Unix timestamp
-file_mtime() {
-    if [[ "$OS_TYPE" == "macos" ]]; then
-        stat -f %m "$1" 2>/dev/null || echo 0
-    else
-        stat -c %Y "$1" 2>/dev/null || echo 0
-    fi
-}
-
-# Parse a "YYYY-MM-DD HH:MM:SS" string to Unix timestamp
-parse_datetime() {
-    if [[ "$OS_TYPE" == "macos" ]]; then
-        date -j -f "%Y-%m-%d %H:%M:%S" "$1" +%s 2>/dev/null || echo 0
-    else
-        date -d "$1" +%s 2>/dev/null || echo 0
-    fi
-}
 
 #=============================================================================
 # Logging functions
@@ -114,7 +58,7 @@ should_log_ok() {
     
     # Get log file's modification time
     local log_mod_time
-    log_mod_time=$(file_mtime "$LOG_FILE")
+    log_mod_time=$(stat -c %Y "$LOG_FILE" 2>/dev/null) || log_mod_time=0
     local current_time
     current_time=$(date +%s)
     local diff=$(( current_time - log_mod_time ))
@@ -146,7 +90,7 @@ should_log_ok() {
     
     # Convert to Unix time
     local last_sec
-    last_sec=$(parse_datetime "$last_time")
+    last_sec=$(date -d "$last_time" +%s 2>/dev/null) || last_sec=0
     
     # Check if within 60 seconds of log file's mod time
     local time_diff=$(( last_sec > log_mod_time ? last_sec - log_mod_time : log_mod_time - last_sec ))
@@ -164,7 +108,7 @@ rotate_log() {
     [[ "$LOG_TO_FILE" != "true" || -z "$LOG_FILE" ]] && return
     
     local size
-    size=$(file_size "$LOG_FILE")
+    size=$(stat -c %s "$LOG_FILE" 2>/dev/null || echo 0)
     
     if (( size > MAX_LOG_SIZE )); then
         # Rotate existing numbered files
@@ -187,10 +131,7 @@ rotate_log() {
 
 check_connectivity() {
     local interface=$1
-    local ping_timeout_flag
-    # macOS uses -t for timeout; Linux uses -W
-    [[ "$OS_TYPE" == "macos" ]] && ping_timeout_flag="-t" || ping_timeout_flag="-W"
-    if ping -I "$interface" -c "$PING_COUNT" "$ping_timeout_flag" "$PING_TIMEOUT" "$PING_TARGET" >/dev/null 2>&1; then
+    if ping -I "$interface" -c "$PING_COUNT" -W "$PING_TIMEOUT" "$PING_TARGET" >/dev/null 2>&1; then
         echo "OK"
     else
         log "[$interface] Test: Fail during Ping - $PING_TARGET did not respond (connectivity outage)"
@@ -205,7 +146,7 @@ check_connectivity() {
 check_dns() {
     local interface=$1 server=$2 port=$3
     local local_ip
-    local_ip=$(get_local_ip "$interface")
+    local_ip=$(ip -4 addr show "$interface" 2>/dev/null | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -1)
     [[ -z "$local_ip" ]] && return 1
     dig +short "$DNS_TEST_DOMAIN" "@$server" -p "$port" -b "$local_ip" >/dev/null 2>&1
 }
@@ -371,13 +312,15 @@ main() {
     
     rotate_log
     
-    # Discover active interfaces dynamically (works on both Linux and macOS)
-    local interfaces=()
-    while IFS= read -r iface; do
-        [[ -n "$iface" ]] && interfaces+=("$iface")
-    done < <(get_active_interfaces)
+    # Define interfaces: wired first, then wireless
+    local interfaces=("eth0" "wlan0")
     
     for interface in "${interfaces[@]}"; do
+        # Check if interface exists
+        if ! ip link show "$interface" >/dev/null 2>&1; then
+            continue
+        fi
+        
         # Check connectivity first
         connectivity=$(check_connectivity "$interface")
         
