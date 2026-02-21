@@ -1,6 +1,6 @@
 # Internet Health Check
 
-A comprehensive bash script for monitoring internet connectivity and DNS chain health with complete test coverage.
+A bash script for monitoring internet connectivity and DNS chain health with test coverage.
 
 ## Quick Start
 
@@ -127,11 +127,11 @@ Logs are appended to the file and auto-rotated when exceeding 2MB.
 # Run every 5 minutes, logging to file
 */5 * * * * ~/InternetHealthCheck/internet_health_check.sh --log-file ~/InternetHealthCheck/logs/internet_health.log
 
-# Run every 5 minutes with disk wear reduction (RPi/SD card optimization)
+# Run every 5 minutes with disk wear reduction (Raspberry Pi/SD card optimization)
 */5 * * * * ~/InternetHealthCheck/internet_health_check.sh --log-file ~/InternetHealthCheck/logs/internet_health.log --reduce-disk-wear
 ```
 
-### Disk Wear Reduction (for RPi)
+### Disk Wear Reduction (for Raspberry Pi)
 
 The `--reduce-disk-wear` flag minimizes SD card/storage wear by reading the log file history to intelligently suppress repetitive OK logs:
 
@@ -145,12 +145,7 @@ The `--reduce-disk-wear` flag minimizes SD card/storage wear by reading the log 
 - **Failures are always logged immediately**, regardless of the flag
 - **24-hour timeout**: Always logs after 24 hours of silence
 
-**Why this approach:**
-- Log file modification time is the definitive "last write" marker
-- If both interfaces' OK entries are recent relative to file mod time, they're definitely from one coherent run
-- No separate state file needed - state is inferred from log content vs. filesystem metadata
-
-**Why this matters for RPi:**
+**Why this matters for Raspberry Pi:**
 - Every write to an SD card reduces its lifespan
 - On a 5-minute cron schedule: saves ~98% of disk writes when system is healthy
 - Maintains complete failure alerting - issues are logged immediately
@@ -161,7 +156,7 @@ The `--reduce-disk-wear` flag minimizes SD card/storage wear by reading the log 
 - Runs continue (13:05, 13:10...): Suppresses OK logs (within 24h window)
 - Run at 12:05 next day: Logs OK again (24+ hours since first log)
 
-**Example behavior with `--log-file` alone (no disk wear reduction):**
+**Example with `--log-file` alone (no disk wear reduction):**
 - All runs: Logs OK every time (5 minute interval)
 
 ### View Results
@@ -194,7 +189,7 @@ The test suite includes 9 test functions covering 12 individual test assertions 
 | Test 7: All DNS services fail | 1 | Multiple service failure handling |
 | Test 8: DNS issue with OK connectivity | 1 | Partial failure detection |
 | Test 9: Pi-hole and dnscrypt fail | 1 | Multiple service combinations |
-| **Total** | **12** | **Complete coverage** |
+| **Total** | **12** | **Coverage** |
 
 ### Running Tests
 
@@ -245,7 +240,7 @@ The script is organized into functional sections:
    - Call check functions and report status
    - Handle missing interfaces gracefully
 
-### Multi-Interface Design
+### Multi-Interface Support
 
 Both interfaces (eth0 and wlan0) are tested independently:
 - Sequentially: eth0 first, then wlan0
