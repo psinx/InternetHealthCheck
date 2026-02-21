@@ -35,7 +35,7 @@ When a DNS failure is detected, the script identifies where in the chain the bre
 | File | Purpose |
 |------|---------|
 | `internet_health_check.sh` | Main script |
-| `tests/test_internet_health_check.sh` | Test suite (12 tests, 100% pass rate) |
+| `tests/test_internet_health_check.sh` | Test suite (15 tests, 100% pass rate) |
 | `logs/internet_health.log` | Monitoring logs (auto-rotated at 2MB) |
 
 ## Log Format
@@ -176,26 +176,25 @@ Logs are automatically rotated when they exceed 2MB:
 
 ## Test Suite
 
-The test suite includes 15 test functions covering complete script functionality (100% passing):
+The test suite includes 15 comprehensive test functions covering all script functionality with 100% pass rate:
 
-| Test Function | Coverage |
+| Test | Coverage |
 |---|---|
-| Test 1: All systems OK | Normal operation |
-| Test 2: Connectivity DOWN | Ping failure detection & alerting |
-| Test 3: Repeated OK state | Multiple consecutive OK checks |
-| Test 4: Pi-hole DNS fails | Individual DNS service failure |
-| Test 5: dnscrypt DNS fails | Individual DNS service failure |
-| Test 6: Cloudflare DNS fails | Individual DNS service failure |
-| Test 7: All DNS services fail | Multiple service failures |
-| Test 8: DNS issue with OK connectivity | Partial failure detection |
-| Test 9: Pi-hole and dnscrypt fail | Complex DNS chain failures |
-| Test 10: should_log_ok() scenarios | Disk wear reduction logic |
-| Test 11: should_log_ok() suppression | Recent OK entry handling |
-| Test 12: should_log_ok() state change | Error-to-OK state transitions |
-| Test 13: rotate_log() small files | No rotation for small logs |
-| Test 14: rotate_log() large files | Log rotation at 2MB |
-| Test 15: usage() output | Help message display |
-| **Total** | **15 tests** |
+| Test 1 | All systems OK - normal operation |
+| Test 2 | Connectivity failure - ping target unresponsive |
+| Test 3 | Repeated OK checks - consecutive healthy states |
+| Test 4 | Pi-hole DNS failure - individual DNS service down |
+| Test 5 | dnscrypt DNS failure - individual DNS service down |
+| Test 6 | Cloudflare DNS failure - public DNS unavailable |
+| Test 7 | All DNS services fail - complete DNS chain down |
+| Test 8 | DNS issue with connectivity OK - partial failures |
+| Test 9 | Pi-hole and dnscrypt fail - multiple DNS hops down |
+| Test 10 | `should_log_ok()` scenarios - disk wear reduction logic |
+| Test 11 | `should_log_ok()` suppression - recent OK entry handling |
+| Test 12 | `should_log_ok()` state change detection - error to OK transitions |
+| Test 13 | `rotate_log()` small files - no rotation for < 2MB |
+| Test 14 | `rotate_log()` large files - rotation triggered at 2MB |
+| Test 15 | `usage()` output - help message display |
 
 ### Running Tests
 
@@ -214,37 +213,40 @@ cd tests/
 
 ### Code Organization
 
-The script is organized into functional sections:
+The script is organized into the following functional sections:
 
-1. **Configuration & Logging** - Constants, log directory setup, logging functions
-   - `log()` - Write timestamped messages to file or stderr
-   - `should_log_ok()` - Intelligent OK suppression for disk wear reduction
-   - `rotate_log()` - Automatic log rotation at 2MB with 7 backups
+**1. Configuration & Logging** - Constants, setup, and logging functions
+- `log(message)` - Write timestamped messages to file or stderr
+- `should_log_ok(interface)` - Intelligent suppression for disk wear reduction (checks 24h timeout, state changes, recent entries)
+- `rotate_log()` - Automatic log rotation at 2MB with 7 backups kept
 
-2. **Connectivity Check** - Network interface testing
-   - `check_connectivity(interface)` - Ping the target IP, return OK/DOWN
-   - Logs detailed failure messages including timeout and target
+**2. Connectivity Check** - Network interface connectivity testing
+- `check_connectivity(interface)` - Tests ping to target IP, returns OK/DOWN
+- Logs detailed failure messages with target, timeout info
 
-3. **DNS Chain Checks** - Multi-layer DNS validation
-   - `check_pihole_dns(interface)` - Query local Pi-hole instance
-   - `check_dnscrypt_dns(interface)` - Query dnscrypt-proxy on port 5053
-   - `check_cloudflare_dns(interface)` - Query public Cloudflare DNS
-   - All functions bind to interface IP using `dig -b` flag for interface-specific testing
+**3. DNS Chain Checks** - Multi-layer DNS validation
+- `check_dns(interface, server, port)` - Generic DNS query function using dig
+- Tests three DNS endpoints in sequence:
+  - Pi-hole on 127.0.0.1:53
+  - dnscrypt-proxy on 127.0.0.1:5053
+  - Cloudflare public DNS on 1.1.1.1:53
+- Binds to interface IP using `dig -b` for interface-specific testing
+- `check_dns_chain(interface)` - Orchestrates all DNS tests and returns overall DNS status
 
-4. **DNS Chain Diagnostics** - Failure analysis and reporting
-   - `log_dns_results()` - Log individual DNS test results
-   - `determine_failure_point()` - Identify which DNS service failed
-   - `log_dns_diagnostics()` - Log detailed diagnostic information
+**4. DNS Results & Diagnostics** - Failure analysis and reporting
+- `log_dns_results(interface, results...)` - Logs individual DNS test pass/fail results
+- `determine_failure_point(results...)` - Identifies which DNS service failed
+- `log_dns_diagnostics(interface, failure_point)` - Logs detailed diagnostic messages
 
-5. **Status Reporting** - Final status determination
-   - `determine_current_status()` - Combine connectivity + DNS results
-   - Output summary: OK, OUTAGE, or DNS ISSUE
+**5. Status Reporting** - Final status determination
+- `determine_current_status(interface, connectivity, dns_ok)` - Combines connectivity + DNS results
+- Outputs: `OK` for healthy, `DOWN - CONNECTIVITY OUTAGE` for ping failure, or `DOWN` blocks for DNS issues
 
-6. **Main Execution** - Argument parsing and orchestration
-   - Parse `--log-file` and `--reduce-disk-wear` flags
-   - Iterate through interfaces (eth0, wlan0)
-   - Call check functions and report status
-   - Handle missing interfaces gracefully
+**6. Argument Parsing & Main Execution** - Optional flags and orchestration
+- `usage()` - Displays help message
+- `main()` - Parses flags (`--log-file`, `--reduce-disk-wear`, `-h/--help`)
+- Iterates through interfaces (eth0, wlan0)
+- Handles missing interfaces gracefully
 
 ### Multi-Interface Support
 
