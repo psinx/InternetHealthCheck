@@ -90,11 +90,11 @@ ping() {
 # Override dig
 dig() {
     if [[ "$*" =~ @127\.0\.0\.1 ]]; then
-        if [[ "$*" =~ -p ]]; then
-            # dnscrypt check
+        if [[ "$*" =~ 5053 ]]; then
+            # dnscrypt check (port 5053)
             (( DNSCRYPT_MOCK == 0 )) && return 0 || return 1
         else
-            # pihole check
+            # pihole check (port 53)
             (( PIHOLE_MOCK == 0 )) && return 0 || return 1
         fi
     elif [[ "$*" =~ @1\.1\.1\.1 ]]; then

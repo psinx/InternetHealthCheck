@@ -115,7 +115,7 @@ rotate_log() {
         for ((i=MAX_ROTATIONS; i>=1; i--)); do
             local old="$LOG_FILE.$i"
             local new="$LOG_FILE.$((i+1))"
-            [ -f "$old" ] && mv -f "$old" "$new" 2>/dev/null
+            [[ -f "$old" ]] && mv -f "$old" "$new" 2>/dev/null
         done
         
         # Compress and move current log
@@ -143,28 +143,12 @@ check_connectivity() {
 # DNS chain checks
 #=============================================================================
 
-check_pihole_dns() {
-    local interface=$1
+check_dns() {
+    local interface=$1 server=$2 port=$3
     local local_ip
     local_ip=$(ip -4 addr show "$interface" 2>/dev/null | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -1)
     [[ -z "$local_ip" ]] && return 1
-    dig +short "$DNS_TEST_DOMAIN" @127.0.0.1 -b "$local_ip" >/dev/null 2>&1
-}
-
-check_dnscrypt_dns() {
-    local interface=$1
-    local local_ip
-    local_ip=$(ip -4 addr show "$interface" 2>/dev/null | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -1)
-    [[ -z "$local_ip" ]] && return 1
-    dig +short "$DNS_TEST_DOMAIN" @127.0.0.1 -p "$DNSCRYPT_PORT" -b "$local_ip" >/dev/null 2>&1
-}
-
-check_cloudflare_dns() {
-    local interface=$1
-    local local_ip
-    local_ip=$(ip -4 addr show "$interface" 2>/dev/null | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -1)
-    [[ -z "$local_ip" ]] && return 1
-    dig +short "$DNS_TEST_DOMAIN" @1.1.1.1 -b "$local_ip" >/dev/null 2>&1
+    dig +short "$DNS_TEST_DOMAIN" "@$server" -p "$port" -b "$local_ip" >/dev/null 2>&1
 }
 
 log_dns_results() {
@@ -172,8 +156,8 @@ log_dns_results() {
     
     # Only log detailed results if there's a problem
     if [[ "$pihole_ok" == "false" || "$dnscrypt_ok" == "false" || "$cloudflare_ok" == "false" ]]; then
-        [[ "$pihole_ok" == "false" ]] && log "[$interface] Test: Fail via Pi-hole (127.0.0.1:53)"
-        [[ "$pihole_ok" == "true" ]] && log "[$interface] Test: Pass via Pi-hole (127.0.0.1:53)"
+        [[ "$pihole_ok" == "false" ]] && log "[$interface] Test: Fail via Pi-hole (127.0.0.1:$PIHOLE_PORT)"
+        [[ "$pihole_ok" == "true" ]] && log "[$interface] Test: Pass via Pi-hole (127.0.0.1:$PIHOLE_PORT)"
         [[ "$dnscrypt_ok" == "false" ]] && log "[$interface] Test: Fail via dnscrypt-proxy (127.0.0.1:${DNSCRYPT_PORT})"
         [[ "$dnscrypt_ok" == "true" ]] && log "[$interface] Test: Pass via dnscrypt-proxy (127.0.0.1:${DNSCRYPT_PORT})"
         [[ "$cloudflare_ok" == "false" ]] && log "[$interface] Test: Fail via Cloudflare public (1.1.1.1:53)"
@@ -223,9 +207,9 @@ check_dns_chain() {
     pihole_ok=false; dnscrypt_ok=false; cloudflare_ok=false
     
     # Test each DNS endpoint
-    check_pihole_dns "$interface" && pihole_ok=true
-    check_dnscrypt_dns "$interface" && dnscrypt_ok=true
-    check_cloudflare_dns "$interface" && cloudflare_ok=true
+    check_dns "$interface" "127.0.0.1" "$PIHOLE_PORT"   && pihole_ok=true
+    check_dns "$interface" "127.0.0.1" "$DNSCRYPT_PORT" && dnscrypt_ok=true
+    check_dns "$interface" "1.1.1.1"   "53"             && cloudflare_ok=true
     
     # Determine overall DNS status
     [[ "$pihole_ok" == "true" && "$dnscrypt_ok" == "true" && "$cloudflare_ok" == "true" ]] && dns_ok=true || dns_ok=false
@@ -347,7 +331,7 @@ main() {
         fi
         
         # Report current status
-        determine_current_status "$interface" "$connectivity" "$dns_ok" >/dev/null
+        determine_current_status "$interface" "$connectivity" "$dns_ok"
     done
 }
 
