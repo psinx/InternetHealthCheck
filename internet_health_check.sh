@@ -134,7 +134,7 @@ check_connectivity() {
     if ping -I "$interface" -c "$PING_COUNT" -W "$PING_TIMEOUT" "$PING_TARGET" >/dev/null 2>&1; then
         echo "OK"
     else
-        log "[$interface] Test: Fail during Ping - $PING_TARGET did not respond (connectivity outage)"
+        log "[$interface] Test: Fail during Ping - $PING_TARGET did not respond"
         echo "DOWN"
     fi
 }
