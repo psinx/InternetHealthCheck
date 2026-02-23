@@ -50,7 +50,7 @@ Log: [INTERNET-HEALTH-CHECK] [wlan0] OK
 
 ### Connectivity Failure
 ```
-Log: [INTERNET-HEALTH-CHECK] [eth0] Test: Fail during Ping - 1.1.1.1 did not respond (connectivity outage)
+Log: [INTERNET-HEALTH-CHECK] [eth0] Test: Fail during Ping - 1.1.1.1 did not respond
 Log: [INTERNET-HEALTH-CHECK] [eth0] DOWN - CONNECTIVITY OUTAGE detected
 ```
 
@@ -278,7 +278,7 @@ Log: [INTERNET-HEALTH-CHECK] [eth0] DOWN
 
 **Scenario 3: No Internet Connectivity**
 ```
-Log: [INTERNET-HEALTH-CHECK] [eth0] Test: Fail during Ping - 1.1.1.1 did not respond (connectivity outage)
+Log: [INTERNET-HEALTH-CHECK] [eth0] Test: Fail during Ping - 1.1.1.1 did not respond
 Log: [INTERNET-HEALTH-CHECK] [eth0] DOWN - CONNECTIVITY OUTAGE detected
 ```
 
