@@ -56,20 +56,21 @@ should_log_ok() {
     # If log file doesn't exist, log it
     [[ ! -f "$LOG_FILE" ]] && return 0
     
-    # Get log file's modification time
+    # Get log file's modification time and current time
     local log_mod_time
     log_mod_time=$(stat -c %Y "$LOG_FILE" 2>/dev/null) || log_mod_time=0
     local current_time
     current_time=$(date +%s)
-    local diff=$(( current_time - log_mod_time ))
     local hours_24=$(( 24 * 60 * 60 ))
-    
+
     # If more than 24 hours since last write, always log
-    (( diff >= hours_24 )) && return 0
-    
+    if (( current_time - log_mod_time >= hours_24 )); then
+        return 0
+    fi
+
     # Find the LAST entry (any status) for THIS interface to detect state changes
     local last_entry
-    last_entry=$(grep "\[$interface\]" "$LOG_FILE" 2>/dev/null | tail -1)
+    last_entry=$(grep -F "[$interface]" "$LOG_FILE" 2>/dev/null | tail -1)
     
     # If no previous entry exists, log it
     [[ -z "$last_entry" ]] && return 0
@@ -87,16 +88,21 @@ should_log_ok() {
     # Extract timestamp (format: 2026-02-17 12:25:04)
     local last_time
     last_time=$(echo "$last_entry" | awk '{print $1 " " $2}')
-    
+
     # Convert to Unix time
     local last_sec
     last_sec=$(date -d "$last_time" +%s 2>/dev/null) || last_sec=0
-    
-    # Check if within 60 seconds of log file's mod time
-    local time_diff=$(( last_sec > log_mod_time ? last_sec - log_mod_time : log_mod_time - last_sec ))
-    
-    # If recent OK entry from last run, suppress logging (no write needed)
-    if (( time_diff <= 60 )); then
+
+    # If conversion failed, be conservative and log
+    if [[ "$last_sec" -le 0 ]]; then
+        return 0
+    fi
+
+    # Check how long since the last OK entry
+    local since_last_ok=$(( current_time - last_sec ))
+
+    # Suppress if the last OK entry was very recent (<= 60s)
+    if (( since_last_ok <= 60 )); then
         return 1  # Suppress
     fi
     
