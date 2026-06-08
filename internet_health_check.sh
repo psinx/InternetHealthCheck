@@ -70,7 +70,7 @@ should_log_ok() {
 
     # Find the LAST entry (any status) for THIS interface to detect state changes
     local last_entry
-    last_entry=$(grep -F "[$interface]" "$LOG_FILE" 2>/dev/null | tail -1)
+    last_entry=$(grep -a -F "[$interface]" "$LOG_FILE" 2>/dev/null | tail -1)
     
     # If no previous entry exists, log it
     [[ -z "$last_entry" ]] && return 0
