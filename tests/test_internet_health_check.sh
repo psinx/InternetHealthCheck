@@ -319,6 +319,21 @@ if should_log_ok eth0; then
 else
     echo "scenario4=fail"
 fi
+
+# Scenario 5: Log file has OK entry from 5 minutes ago and was last modified 5 minutes ago (typical healthy cron run)
+REDUCE_DISK_WEAR=true
+LOG_TO_FILE=true
+LOG_FILE="$TEST_LOG_FILE"
+mkdir -p "$(dirname "$TEST_LOG_FILE")"
+five_min_ago_str=$(date -d "5 minutes ago" "+%Y-%m-%d %H:%M:%S" 2>/dev/null || date -v -5M "+%Y-%m-%d %H:%M:%S")
+echo "$five_min_ago_str [INTERNET-HEALTH-CHECK] [eth0] OK" > "$TEST_LOG_FILE"
+touch_ts=$(date -d "5 minutes ago" +%Y%m%d%H%M.%S 2>/dev/null || date -v -5M +%Y%m%d%H%M.%S)
+touch -t "$touch_ts" "$TEST_LOG_FILE"
+if should_log_ok eth0; then
+    echo "scenario5=fail"
+else
+    echo "scenario5=pass"
+fi
 TESTEOF
     chmod +x /tmp/test_scenarios.sh
     
@@ -327,7 +342,8 @@ TESTEOF
     if echo "$results" | grep -q "scenario1=pass" && \
        echo "$results" | grep -q "scenario2=pass" && \
        echo "$results" | grep -q "scenario3=pass" && \
-       echo "$results" | grep -q "scenario4=pass"; then
+       echo "$results" | grep -q "scenario4=pass" && \
+       echo "$results" | grep -q "scenario5=pass"; then
         assert_pass "should_log_ok handles all scenarios correctly"
     else
         assert_fail "should_log_ok scenario test failed"

@@ -98,11 +98,11 @@ should_log_ok() {
         return 0
     fi
 
-    # Check how long since the last OK entry
-    local since_last_ok=$(( current_time - last_sec ))
+    # Check if within 60 seconds of log file's mod time
+    local time_diff=$(( last_sec > log_mod_time ? last_sec - log_mod_time : log_mod_time - last_sec ))
 
-    # Suppress if the last OK entry was very recent (<= 60s)
-    if (( since_last_ok <= 60 )); then
+    # If recent OK entry from last run, suppress logging (no write needed)
+    if (( time_diff <= 60 )); then
         return 1  # Suppress
     fi
     
