@@ -251,7 +251,7 @@ check_dns_chain() {
 #=============================================================================
 
 generate_html_page() {
-    local temp_html="${HTML_FILE}.tmp"
+    local temp_html="/tmp/$(basename "$HTML_FILE").tmp"
     
     # Check overall status
     local overall_status="Healthy"
@@ -1020,9 +1020,11 @@ generate_html_page() {
 </html>
 EOF
 
-    # Move temporary file to final path (supports sudo if target requires it)
-    if [[ "$HTML_FILE" =~ ^/var/www/html/ ]]; then
-        sudo mv -f "$temp_html" "$HTML_FILE" 2>/dev/null || mv -f "$temp_html" "$HTML_FILE"
+    # Overwrite the final file (handles permissions cleanly)
+    if cat "$temp_html" > "$HTML_FILE" 2>/dev/null; then
+        rm -f "$temp_html"
+    elif sudo cp -f "$temp_html" "$HTML_FILE" 2>/dev/null; then
+        rm -f "$temp_html"
     else
         mv -f "$temp_html" "$HTML_FILE"
     fi
