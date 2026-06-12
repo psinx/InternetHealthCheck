@@ -39,6 +39,7 @@ log() {
     
     if [[ "$LOG_TO_FILE" == "true" && -n "$LOG_FILE" ]]; then
         echo "$message" >> "$LOG_FILE"
+        WRITE_OCCURRED=true
     else
         echo "$message" >&2
     fi
@@ -58,7 +59,11 @@ should_log_ok() {
     
     # Get log file's modification time and current time
     local log_mod_time
-    log_mod_time=$(stat -c %Y "$LOG_FILE" 2>/dev/null) || log_mod_time=0
+    if stat -c %Y "$LOG_FILE" >/dev/null 2>&1; then
+        log_mod_time=$(stat -c %Y "$LOG_FILE" 2>/dev/null) || log_mod_time=0
+    else
+        log_mod_time=$(stat -f %m "$LOG_FILE" 2>/dev/null) || log_mod_time=0
+    fi
     local current_time
     current_time=$(date +%s)
     local hours_24=$(( 24 * 60 * 60 ))
@@ -91,7 +96,11 @@ should_log_ok() {
 
     # Convert to Unix time
     local last_sec
-    last_sec=$(date -d "$last_time" +%s 2>/dev/null) || last_sec=0
+    if date -d "$last_time" +%s >/dev/null 2>&1; then
+        last_sec=$(date -d "$last_time" +%s 2>/dev/null) || last_sec=0
+    else
+        last_sec=$(date -j -f "%Y-%m-%d %H:%M:%S" "$last_time" +%s 2>/dev/null) || last_sec=0
+    fi
 
     # If conversion failed, be conservative and log
     if [[ "$last_sec" -le 0 ]]; then
@@ -114,7 +123,8 @@ rotate_log() {
     [[ "$LOG_TO_FILE" != "true" || -z "$LOG_FILE" ]] && return
     
     local size
-    size=$(stat -c %s "$LOG_FILE" 2>/dev/null || echo 0)
+    size=$(wc -c < "$LOG_FILE" 2>/dev/null)
+    size=$((size + 0)) 2>/dev/null || size=0
     
     if (( size > MAX_LOG_SIZE )); then
         # Rotate existing numbered files
@@ -138,10 +148,10 @@ rotate_log() {
 check_connectivity() {
     local interface=$1
     if ping -I "$interface" -c "$PING_COUNT" -W "$PING_TIMEOUT" "$PING_TARGET" >/dev/null 2>&1; then
-        echo "OK"
+        CONNECTIVITY_RESULT="OK"
     else
         log "[$interface] Test: Fail during Ping - $PING_TARGET did not respond"
-        echo "DOWN"
+        CONNECTIVITY_RESULT="DOWN"
     fi
 }
 
@@ -152,7 +162,7 @@ check_connectivity() {
 check_dns() {
     local interface=$1 server=$2 port=$3
     local local_ip
-    local_ip=$(ip -4 addr show "$interface" 2>/dev/null | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -1)
+    local_ip=$(ip -4 addr show "$interface" 2>/dev/null | grep -w inet | awk '{print $2}' | cut -d/ -f1 | head -n1)
     [[ -z "$local_ip" ]] && return 1
     dig +short "$DNS_TEST_DOMAIN" "@$server" -p "$port" -b "$local_ip" >/dev/null 2>&1
 }
@@ -1110,6 +1120,7 @@ main() {
         esac
     done
     
+    WRITE_OCCURRED=false
     rotate_log
     
     # Initialize interface existence variables
@@ -1128,7 +1139,8 @@ main() {
         eval "STATUS_${interface}_EXISTS=true"
         
         # Check connectivity first
-        connectivity=$(check_connectivity "$interface")
+        check_connectivity "$interface"
+        connectivity="$CONNECTIVITY_RESULT"
         eval "STATUS_${interface}_CONNECTIVITY=\"\$connectivity\""
         
         # Check DNS chain only if connectivity is OK
@@ -1149,7 +1161,24 @@ main() {
     
     # After checking all interfaces, if HTML_FILE is set, generate the HTML page
     if [[ -n "$HTML_FILE" ]]; then
-        generate_html_page
+        # Check if the HTML file is stored on a tmpfs (RAM disk)
+        local is_tmpfs=false
+        local check_path="$HTML_FILE"
+        if [[ -L "$HTML_FILE" ]]; then
+            # Resolve symlink to check the actual target filesystem
+            check_path=$(readlink -f "$HTML_FILE" 2>/dev/null) || check_path="$HTML_FILE"
+        fi
+        
+        # If the target file or its parent directory is on a tmpfs, it is safe to write
+        local target_dir
+        target_dir=$(dirname "$check_path")
+        if (df -T "$check_path" 2>/dev/null | grep -q tmpfs) || (df -T "$target_dir" 2>/dev/null | grep -q tmpfs); then
+            is_tmpfs=true
+        fi
+
+        if [[ "$REDUCE_DISK_WEAR" != "true" || "$WRITE_OCCURRED" == "true" || "$is_tmpfs" == "true" || ! -f "$HTML_FILE" ]]; then
+            generate_html_page
+        fi
     fi
 }
 
