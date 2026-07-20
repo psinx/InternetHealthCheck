@@ -8,7 +8,11 @@ get_interface_ip() {
     if [[ "$OSTYPE" == "darwin"* ]]; then
         ifconfig "$interface" 2>/dev/null | grep 'inet ' | awk '{print $2}' | head -n1
     else
-        ip -4 addr show "$interface" 2>/dev/null | grep -w inet | awk '{print $2}' | cut -d/ -f1 | head -n1
+        if command -v ip >/dev/null 2>&1; then
+            ip -4 addr show "$interface" 2>/dev/null | grep -w inet | awk '{print $2}' | cut -d/ -f1 | head -n1
+        elif command -v hostname >/dev/null 2>&1; then
+            hostname -I | awk '{print $1}'
+        fi
     fi
 }
 

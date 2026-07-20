@@ -58,9 +58,18 @@ run_with_mocks() {
     fi
     
     # Create mock wrapper
-    cat > /tmp/run_test.sh << 'TESTEOF'
+    if [[ "${RUN_REMOTE_TEST:-false}" == "true" ]]; then
+        cat > /tmp/run_test.sh << 'TESTEOF'
 #!/bin/bash
-
+HOME="$TEST_HOME"
+export HOME
+source "$SCRIPT_PATH"
+export RAM_STATE_FILE="$TEST_RAM_FILE"
+main --log-file "$TEST_LOG_FILE" --html-file "$TEST_HOME/status.json"
+TESTEOF
+    else
+        cat > /tmp/run_test.sh << 'TESTEOF'
+#!/bin/bash
 HOME="$TEST_HOME"
 export HOME
 
@@ -107,7 +116,6 @@ dig() {
     fi
 }
 
-
 # Mock logger syslog
 logger() {
     return 0
@@ -120,6 +128,7 @@ source "$SCRIPT_PATH"
 export RAM_STATE_FILE="$TEST_RAM_FILE"
 main --log-file "$TEST_LOG_FILE" --interfaces "eth0,wlan0"
 TESTEOF
+    fi
     
     chmod +x /tmp/run_test.sh
     
@@ -486,7 +495,18 @@ TESTEOF
 #=============================================================================
 
 main() {
-    local script_arg="${1:-internet_health_check.sh}"
+    local run_remote=false
+    local script_arg=""
+    
+    for arg in "$@"; do
+        if [[ "$arg" == "--remote" || "$arg" == "--real" ]]; then
+            run_remote=true
+        else
+            script_arg="$arg"
+        fi
+    done
+    
+    [[ -z "$script_arg" ]] && script_arg="internet_health_check.sh"
     
     local test_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     local parent_dir="$(dirname "$test_dir")"
@@ -506,6 +526,47 @@ main() {
         exit 1
     fi
     
+    # 1. Run live remote/real test integration if requested
+    if [[ "$run_remote" == "true" ]]; then
+        echo "=========================================="
+        echo "Running REMOTE Integration Test (Live Network)"
+        echo "Script: $SCRIPT_PATH"
+        echo "=========================================="
+        echo ""
+        
+        setup_test_env
+        
+        # Export indicator so wrapper executes real commands
+        export RUN_REMOTE_TEST=true
+        run_with_mocks 0 0 0 0
+        
+        if [ -s "$TEST_LOG_FILE" ]; then
+            assert_pass "Log entries successfully written to plain-text file"
+        else
+            assert_fail "No log entries written"
+        fi
+        
+        if [ -s "$TEST_HOME/status.json" ]; then
+            assert_pass "status.json successfully generated in target directory"
+        else
+            assert_fail "status.json was not generated"
+        fi
+        
+        echo ""
+        echo "=========================================="
+        echo "Results: $TESTS_PASSED passed, $TESTS_FAILED failed"
+        echo "=========================================="
+        
+        if [ $TESTS_FAILED -eq 0 ]; then
+            echo "✓ Remote integration test passed!"
+            exit 0
+        else
+            echo "✗ Remote integration test failed"
+            exit 1
+        fi
+    fi
+    
+    # 2. Run standard mock unit tests
     echo "=========================================="
     echo "Internet Health Check - Stateless Monitoring Test Suite"
     echo "Script: $SCRIPT_PATH"
