@@ -1,0 +1,896 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pi-hole - Internet Health Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            /* Pi-hole v6 Dark Theme (Slate/Tailwind style) */
+            --bg-color: #0f172a;          /* Slate-900 */
+            --card-bg: #1e293b;           /* Slate-800 */
+            --card-border: #334155;       /* Slate-700 */
+            --sidebar-bg: #0b0f19;        /* Deep Slate-950 */
+            --brand-bg: #090b11;          /* Ultra dark for logo */
+            
+            --success: #22c55e;           /* Tailwind Green-500 */
+            --success-glow: rgba(34, 197, 94, 0.15);
+            --warning: #eab308;           /* Tailwind Yellow-500 */
+            --warning-glow: rgba(234, 179, 8, 0.15);
+            --danger: #ef4444;            /* Tailwind Red-500 */
+            --danger-glow: rgba(239, 68, 68, 0.15);
+            --info-blue: #3b82f6;         /* Tailwind Blue-500 */
+            
+            --text-main: #f8fafc;         /* Slate-50 */
+            --text-muted: #94a3b8;        /* Slate-400 */
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+        }
+
+        /* Sidebar Navigation */
+        .sidebar {
+            width: 240px;
+            background-color: var(--sidebar-bg);
+            flex-shrink: 0;
+            display: flex;
+            flex-direction: column;
+            border-right: 1px solid var(--card-border);
+        }
+
+        .brand-logo {
+            background-color: var(--brand-bg);
+            padding: 1.25rem 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            border-bottom: 1px solid var(--card-border);
+        }
+
+        .logo-img {
+            width: 28px;
+            height: 28px;
+            background: #ef4444; /* Pi-hole red logo */
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            color: white;
+            font-size: 0.75rem;
+            position: relative;
+        }
+
+        .logo-img::before {
+            content: '☘';
+            color: #22c55e;
+            font-size: 1.1rem;
+            position: absolute;
+            top: -9px;
+            right: -4px;
+        }
+
+        .brand-name {
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: white;
+            letter-spacing: -0.2px;
+        }
+
+        .sidebar-menu {
+            list-style: none;
+            padding: 1rem 0.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }
+
+        .menu-item a {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.65rem 0.75rem;
+            color: var(--text-muted);
+            text-decoration: none;
+            font-size: 0.9rem;
+            font-weight: 500;
+            border-radius: 6px;
+            transition: all 0.15s ease;
+        }
+
+        .menu-item:hover a {
+            color: white;
+            background-color: rgba(255, 255, 255, 0.05);
+        }
+
+        .menu-item.active a {
+            color: white;
+            background-color: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .menu-icon {
+            font-size: 1.1rem;
+            color: var(--text-muted);
+            opacity: 0.8;
+        }
+
+        .menu-item.active .menu-icon {
+            color: var(--success);
+            opacity: 1;
+        }
+
+        /* Main Content area */
+        .content-area {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+        }
+
+        /* Top Navbar */
+        .navbar {
+            background-color: var(--sidebar-bg);
+            border-bottom: 1px solid var(--card-border);
+            padding: 0.9rem 1.5rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .nav-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: white;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .nav-user {
+            display: flex;
+            align-items: center;
+            gap: 1.25rem;
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }
+
+        .nav-user-item {
+            display: flex;
+            align-items: center;
+            gap: 0.35rem;
+            cursor: pointer;
+            background: rgba(255, 255, 255, 0.03);
+            padding: 0.3rem 0.6rem;
+            border-radius: 4px;
+            border: 1px solid var(--card-border);
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            background-color: var(--success);
+            border-radius: 50%;
+            display: inline-block;
+        }
+
+        /* Dashboard Container */
+        .dashboard {
+            padding: 1.5rem;
+            max-width: 1000px;
+            width: 100%;
+            margin: 0 auto;
+        }
+
+        /* Modern Pi-hole v6 Card */
+        .card {
+            background-color: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 8px;
+            margin-bottom: 1.5rem;
+            overflow: hidden;
+        }
+
+        .card-header {
+            border-bottom: 1px solid var(--card-border);
+            padding: 0.85rem 1.25rem;
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: white;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background-color: rgba(255, 255, 255, 0.01);
+        }
+
+        .card-body {
+            padding: 1.25rem;
+        }
+
+        /* Live DNS Chain Hops */
+        .chain-flow {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: relative;
+            padding: 0.5rem 0;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .chain-node {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.4rem;
+            width: 190px;
+            z-index: 1;
+            background: var(--sidebar-bg);
+            border: 1px solid var(--card-border);
+            padding: 0.85rem;
+            border-radius: 6px;
+            transition: all 0.3s ease;
+        }
+
+        .node-name {
+            font-size: 0.85rem;
+            font-weight: 700;
+            color: #f1f5f9;
+        }
+
+        .node-status-desc {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        /* Node States */
+        .node-pass {
+            border-color: var(--success);
+        }
+        .node-pass .node-name {
+            color: var(--success);
+        }
+
+        .node-fail {
+            border-color: var(--danger);
+        }
+        .node-fail .node-name {
+            color: var(--danger);
+        }
+
+        .connector-arrow {
+            flex-grow: 1;
+            height: 2px;
+            background: var(--card-border);
+            position: relative;
+            min-width: 25px;
+        }
+
+        .connector-arrow::after {
+            content: '➔';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: var(--text-muted);
+            opacity: 0.4;
+            font-size: 0.8rem;
+        }
+
+        .arrow-active::after {
+            color: var(--success);
+            opacity: 1;
+            text-shadow: 0 0 4px var(--success);
+        }
+
+        /* 72-Hour Grid styling */
+        .grid-row {
+            display: flex;
+            align-items: center;
+            margin-bottom: 0.85rem;
+            gap: 1rem;
+        }
+        .grid-row:last-child {
+            margin-bottom: 0;
+        }
+
+        .row-label {
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            width: 80px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .row-cells {
+            display: grid;
+            grid-template-columns: repeat(24, 1fr);
+            gap: 4px;
+            flex-grow: 1;
+        }
+
+        .hour-cell {
+            aspect-ratio: 1;
+            background: var(--success);
+            border-radius: 3px;
+            cursor: pointer;
+            position: relative;
+            transition: all 0.2s ease;
+        }
+
+        .hour-cell:hover {
+            transform: scale(1.25);
+            z-index: 5;
+            box-shadow: 0 0 5px rgba(255,255,255,0.2);
+        }
+
+        .hour-cell.hour-warning {
+            background: var(--warning);
+        }
+
+        .hour-cell.hour-danger {
+            background: var(--danger);
+        }
+
+        .hour-cell.hour-inactive {
+            background: rgba(255, 255, 255, 0.05);
+            cursor: default;
+        }
+
+        /* Tooltips */
+        .hour-cell .tooltip {
+            visibility: hidden;
+            position: absolute;
+            bottom: 140%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #0f172a;
+            border: 1px solid var(--card-border);
+            color: white;
+            padding: 0.4rem 0.6rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            white-space: nowrap;
+            z-index: 10;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+        }
+
+        .hour-cell:hover .tooltip {
+            visibility: visible;
+        }
+
+        .timeline-axis {
+            display: flex;
+            justify-content: space-between;
+            margin-left: 96px;
+            margin-top: 0.5rem;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        /* Stat Grid */
+        .stat-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .stat-line {
+            display: flex;
+            justify-content: space-between;
+            padding: 0.5rem 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+            font-size: 0.85rem;
+        }
+        .stat-line:last-child {
+            border-bottom: none;
+        }
+
+        .stat-value {
+            font-weight: 600;
+        }
+
+        .term-green { color: #22c55e; }
+        .term-red { color: #ef4444; }
+        .term-orange { color: #eab308; }
+
+        /* Incidents log list */
+        .incident-item {
+            background: rgba(255, 255, 255, 0.01);
+            border: 1px solid var(--card-border);
+            border-radius: 6px;
+            padding: 0.85rem 1rem;
+            margin-bottom: 0.6rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .incident-badge {
+            font-size: 0.7rem;
+            font-weight: 700;
+            padding: 0.15rem 0.4rem;
+            border-radius: 4px;
+            text-transform: uppercase;
+        }
+
+        .badge-danger { background-color: var(--danger-glow); color: var(--danger); border: 1px solid rgba(239, 68, 68, 0.2); }
+        .badge-warning { background-color: var(--warning-glow); color: var(--warning); border: 1px solid rgba(234, 179, 8, 0.2); }
+
+        .incident-left {
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }
+
+        .incident-desc {
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+
+        .incident-time {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        .incident-duration {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* Error Banner overlay if status.json fetch fails */
+        #error-overlay {
+            display: none;
+            background-color: var(--danger-glow);
+            border: 1px solid var(--danger);
+            border-radius: 6px;
+            padding: 1rem;
+            margin-bottom: 1.5rem;
+            font-size: 0.9rem;
+            color: #fca5a5;
+        }
+
+    </style>
+</head>
+<body>
+    
+    <!-- Sidebar -->
+    <aside class="sidebar">
+        <div class="brand-logo">
+            <div class="logo-img">Pi</div>
+            <span class="brand-name">Pi-hole</span>
+        </div>
+        <ul class="sidebar-menu">
+            <li class="menu-item"><a href="#dashboard"><span class="menu-icon">📊</span> Dashboard</a></li>
+            <li class="menu-item"><a href="#querylog"><span class="menu-icon">📋</span> Query Log</a></li>
+            <li class="menu-item active"><a href="#health"><span class="menu-icon">⚡</span> Internet Health</a></li>
+            <li class="menu-item"><a href="#gravity"><span class="menu-icon">🛡️</span> Gravity</a></li>
+            <li class="menu-item"><a href="#localdns"><span class="menu-icon">🌐</span> Local DNS</a></li>
+            <li class="menu-item"><a href="#settings"><span class="menu-icon">⚙</span> Settings</a></li>
+        </ul>
+    </aside>
+
+    <!-- Main Content Panel -->
+    <main class="content-area">
+        
+        <!-- Navbar -->
+        <nav class="navbar">
+            <div class="nav-title">Internet Health Diagnostics</div>
+            <div class="nav-user">
+                <div class="nav-user-item">
+                    <span id="nav-status-dot" class="status-dot"></span>
+                    <span id="nav-status-text" style="color:white; font-weight:600;">Loading...</span>
+                </div>
+                <div class="nav-user-item">
+                    <span>Admin</span>
+                </div>
+            </div>
+        </nav>
+
+        <!-- Dashboard Widgets -->
+        <section class="dashboard">
+
+            <!-- Fetch Error Overlay -->
+            <div id="error-overlay">
+                <strong>Error fetching status data:</strong> Could not load status.json. Make sure the daemon script is running and generating status data.
+            </div>
+
+            <!-- Live DNS Chain Box -->
+            <div class="card">
+                <div class="card-header">
+                    <span>Live DNS Chain Diagnostics</span>
+                    <span id="header-status-label" class="term-green" style="font-size:0.8rem; font-weight:700; text-transform:uppercase;">● Status: Loading...</span>
+                </div>
+                <div class="card-body">
+                    <div class="chain-flow">
+                        <!-- Client -->
+                        <div id="node-client" class="chain-node node-pass">
+                            <div class="node-name">CLIENT</div>
+                            <div class="node-status-desc">Local Machine (Active)</div>
+                        </div>
+
+                        <div id="arrow-1" class="connector-arrow"></div>
+
+                        <!-- Pi-hole -->
+                        <div id="node-pihole" class="chain-node">
+                            <div class="node-name">Pi-hole</div>
+                            <div id="node-pihole-desc" class="node-status-desc">127.0.0.1:53</div>
+                        </div>
+
+                        <div id="arrow-2" class="connector-arrow"></div>
+
+                        <!-- dnscrypt-proxy -->
+                        <div id="node-dnscrypt" class="chain-node">
+                            <div class="node-name">dnscrypt-proxy</div>
+                            <div id="node-dnscrypt-desc" class="node-status-desc">127.0.0.1:5053</div>
+                        </div>
+
+                        <div id="arrow-3" class="connector-arrow"></div>
+
+                        <!-- Cloudflare Upstream -->
+                        <div id="node-cloudflare" class="chain-node">
+                            <div class="node-name">Cloudflare (DoH)</div>
+                            <div id="node-cloudflare-desc" class="node-status-desc">1.1.1.1:53</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 72-Hour Uptime Grid Box -->
+            <div class="card">
+                <div class="card-header">
+                    <span>Historical Uptime (Last 72 Hours)</span>
+                    <span id="grid-uptime-pct" class="term-green" style="font-weight:600;">--% SLA</span>
+                </div>
+                <div class="card-body">
+                    <div style="display:flex; flex-direction:column; gap:0.6rem;">
+                        <!-- Row 1 -->
+                        <div class="grid-row">
+                            <div class="row-label">Today</div>
+                            <div class="row-cells" id="row-today"></div>
+                        </div>
+                        <!-- Row 2 -->
+                        <div class="grid-row">
+                            <div class="row-label">Yesterday</div>
+                            <div class="row-cells" id="row-yesterday"></div>
+                        </div>
+                        <!-- Row 3 -->
+                        <div class="grid-row">
+                            <div class="row-label">2 Days Ago</div>
+                            <div class="row-cells" id="row-2daysago"></div>
+                        </div>
+                    </div>
+                    <div class="timeline-axis">
+                        <span>00:00 (Midnight)</span>
+                        <span>06:00 AM</span>
+                        <span>12:00 (Noon)</span>
+                        <span>06:00 PM</span>
+                        <span>23:00 (11 PM)</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Stats Grid -->
+            <div class="stat-grid">
+                <!-- Latencies (Main/eth0 interface default view) -->
+                <div class="card">
+                    <div class="card-header">Latency Diagnostics (Active Interface)</div>
+                    <div class="card-body">
+                        <div class="stat-line">
+                            <span>Pi-hole Response</span>
+                            <span id="lat-pi" class="stat-value">--</span>
+                        </div>
+                        <div class="stat-line">
+                            <span>dnscrypt-proxy Hop</span>
+                            <span id="lat-dns" class="stat-value">--</span>
+                        </div>
+                        <div class="stat-line">
+                            <span>Cloudflare Upstream</span>
+                            <span id="lat-cf" class="stat-value">--</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Interfaces -->
+                <div class="card">
+                    <div class="card-header">Network Interfaces</div>
+                    <div class="card-body">
+                        <div class="stat-line">
+                            <span>Wired Link (eth0)</span>
+                            <span id="if-eth" class="stat-value">--</span>
+                        </div>
+                        <div class="stat-line">
+                            <span>Wireless Link (wlan0)</span>
+                            <span id="if-wlan" class="stat-value">--</span>
+                        </div>
+                        <div class="stat-line">
+                            <span>Packet Loss (Ping)</span>
+                            <span id="if-loss" class="stat-value">--</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Incidents Box -->
+            <div class="card">
+                <div class="card-header">Recent Events & Outages Log</div>
+                <div class="card-body" id="incident-list">
+                    <div style="font-size:0.9rem; color:var(--text-muted); text-align:center; padding:1rem;">
+                        No incidents logged.
+                    </div>
+                </div>
+            </div>
+
+        </section>
+    </main>
+
+    <script>
+        // Render 24 empty cells per row as initial state
+        function renderEmptyGrid() {
+            const rows = ['row-today', 'row-yesterday', 'row-2daysago'];
+            rows.forEach(rowId => {
+                const container = document.getElementById(rowId);
+                container.innerHTML = '';
+                for (let h = 0; h < 24; h++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'hour-cell hour-inactive';
+                    container.appendChild(cell);
+                }
+            });
+        }
+
+        // Fetch state data and update interface
+        async function refreshDashboard() {
+            try {
+                const response = await fetch('status.json?t=' + Date.now());
+                if (!response.ok) throw new Error('Failed to load status.json');
+                const data = await response.json();
+                
+                document.getElementById('error-overlay').style.display = 'none';
+                updateUI(data);
+            } catch (err) {
+                console.error(err);
+                document.getElementById('error-overlay').style.display = 'block';
+            }
+        }
+
+        function updateUI(data) {
+            // 1. Overall Status
+            const activeStatus = data.status || 'Unknown';
+            const navDot = document.getElementById('nav-status-dot');
+            const navText = document.getElementById('nav-status-text');
+            const headerLabel = document.getElementById('header-status-label');
+            
+            navText.textContent = activeStatus;
+            
+            if (activeStatus === 'Healthy') {
+                navDot.style.backgroundColor = 'var(--success)';
+                headerLabel.className = 'term-green';
+                headerLabel.textContent = '● Status: Healthy';
+            } else if (activeStatus.includes('DNS')) {
+                navDot.style.backgroundColor = 'var(--warning)';
+                headerLabel.className = 'term-orange';
+                headerLabel.textContent = '● Status: ' + activeStatus.toUpperCase();
+            } else {
+                navDot.style.backgroundColor = 'var(--danger)';
+                headerLabel.className = 'term-red';
+                headerLabel.textContent = '● Status: ' + activeStatus.toUpperCase();
+            }
+
+            // 2. Interfaces & Primary Check
+            // We use the first active/exists interface to show in the main flow
+            let activeIface = null;
+            if (data.interfaces) {
+                if (data.interfaces.eth0 && data.interfaces.eth0.exists) {
+                    activeIface = data.interfaces.eth0;
+                } else if (data.interfaces.wlan0 && data.interfaces.wlan0.exists) {
+                    activeIface = data.interfaces.wlan0;
+                }
+                
+                // Update interface status text
+                updateInterfaceRow('if-eth', data.interfaces.eth0);
+                updateInterfaceRow('if-wlan', data.interfaces.wlan0);
+                
+                if (activeIface) {
+                    const lossVal = activeIface.packet_loss !== undefined ? activeIface.packet_loss : 0.0;
+                    const lossEl = document.getElementById('if-loss');
+                    lossEl.textContent = lossVal.toFixed(1) + '%';
+                    lossEl.className = 'stat-value ' + (lossVal > 0 ? (lossVal === 100 ? 'term-red' : 'term-orange') : 'term-green');
+                }
+            }
+
+            // 3. DNS Chain Nodes
+            const nodePihole = document.getElementById('node-pihole');
+            const nodePiholeDesc = document.getElementById('node-pihole-desc');
+            const nodeDns = document.getElementById('node-dnscrypt');
+            const nodeDnsDesc = document.getElementById('node-dnscrypt-desc');
+            const nodeCf = document.getElementById('node-cloudflare');
+            const nodeCfDesc = document.getElementById('node-cloudflare-desc');
+            
+            const arr1 = document.getElementById('arrow-1');
+            const arr2 = document.getElementById('arrow-2');
+            const arr3 = document.getElementById('arrow-3');
+            
+            const latPi = document.getElementById('lat-pi');
+            const latDns = document.getElementById('lat-dns');
+            const latCf = document.getElementById('lat-cf');
+
+            if (activeIface && activeIface.connectivity === 'OK') {
+                // Connections active
+                arr1.className = 'connector-arrow arrow-active';
+                arr2.className = 'connector-arrow arrow-active';
+                arr3.className = 'connector-arrow arrow-active';
+                
+                updateNodeState(nodePihole, nodePiholeDesc, activeIface.pihole, '127.0.0.1:53');
+                updateNodeState(nodeDns, nodeDnsDesc, activeIface.dnscrypt, '127.0.0.1:5053');
+                updateNodeState(nodeCf, nodeCfDesc, activeIface.cloudflare, '1.1.1.1:53');
+                
+                // Latency values
+                updateLatencyText(latPi, activeIface.latency_pihole);
+                updateLatencyText(latDns, activeIface.latency_dnscrypt);
+                updateLatencyText(latCf, activeIface.latency_cloudflare);
+            } else {
+                // Outage
+                arr1.className = 'connector-arrow';
+                arr2.className = 'connector-arrow';
+                arr3.className = 'connector-arrow';
+                
+                updateNodeState(nodePihole, nodePiholeDesc, false, 'FAIL');
+                updateNodeState(nodeDns, nodeDnsDesc, false, 'FAIL');
+                updateNodeState(nodeCf, nodeCfDesc, false, 'FAIL');
+                
+                latPi.textContent = 'UNREACHABLE'; latPi.className = 'stat-value term-red';
+                latDns.textContent = 'UNREACHABLE'; latDns.className = 'stat-value term-red';
+                latCf.textContent = 'UNREACHABLE'; latCf.className = 'stat-value term-red';
+            }
+
+            // 4. Historical Uptime Grid
+            if (data.history) {
+                renderHistoricalGrid(data.history);
+            }
+
+            // 5. Incidents
+            const incidentList = document.getElementById('incident-list');
+            if (data.incidents && data.incidents.length > 0) {
+                incidentList.innerHTML = '';
+                data.incidents.forEach(inc => {
+                    const item = document.createElement('div');
+                    item.className = 'incident-item';
+                    
+                    const isOutage = inc.type === 'outage';
+                    const badgeClass = isOutage ? 'badge-danger' : 'badge-warning';
+                    
+                    item.innerHTML = `
+                        <div class="incident-left">
+                            <span class="incident-badge ${badgeClass}">${inc.badge || 'Incident'}</span>
+                            <span class="incident-time">${inc.timestamp}</span>
+                        </div>
+                        <span class="incident-desc">${inc.description}</span>
+                        <span class="incident-duration">${inc.duration || 'Ongoing'}</span>
+                    `;
+                    incidentList.appendChild(item);
+                });
+            } else {
+                incidentList.innerHTML = `<div style="font-size:0.9rem; color:var(--text-muted); text-align:center; padding:1rem;">
+                    No incidents logged in the last 72 hours.
+                </div>`;
+            }
+            
+            // SLA
+            if (data.sla_percentage !== undefined) {
+                const slaEl = document.getElementById('grid-uptime-pct');
+                const sla = data.sla_percentage;
+                slaEl.textContent = sla.toFixed(2) + '% Uptime';
+                slaEl.className = sla >= 99.9 ? 'term-green' : (sla >= 99.0 ? 'term-orange' : 'term-red');
+            }
+        }
+
+        function updateInterfaceRow(elementId, iface) {
+            const el = document.getElementById(elementId);
+            if (!iface || !iface.exists) {
+                el.textContent = 'Inactive';
+                el.className = 'stat-value var(--text-muted)';
+            } else if (iface.connectivity === 'DOWN') {
+                el.textContent = 'Offline';
+                el.className = 'stat-value term-red';
+            } else if (iface.dns_ok === false) {
+                el.textContent = 'DNS Issue';
+                el.className = 'stat-value term-orange';
+            } else {
+                el.textContent = 'Online';
+                el.className = 'stat-value term-green';
+            }
+        }
+
+        function updateNodeState(nodeEl, descEl, isOk, portLabel) {
+            if (isOk) {
+                nodeEl.className = 'chain-node node-pass';
+                descEl.textContent = portLabel + ' (OK)';
+            } else {
+                nodeEl.className = 'chain-node node-fail';
+                descEl.textContent = portLabel + ' (FAIL)';
+            }
+        }
+
+        function updateLatencyText(el, val) {
+            if (val === undefined || val === -1 || val === null) {
+                el.textContent = 'TIMEOUT';
+                el.className = 'stat-value term-red';
+            } else {
+                el.textContent = val + 'ms';
+                el.className = 'stat-value term-green';
+            }
+        }
+
+        function renderHistoricalGrid(history) {
+            // history is expected to be an array of objects corresponding to rows:
+            // e.g. [{"day": "Today", "hours": [...]}, {"day": "Yesterday", "hours": [...]}, ...]
+            const containerIds = {
+                'Today': 'row-today',
+                'Yesterday': 'row-yesterday',
+                '2 Days Ago': 'row-2daysago'
+            };
+            
+            history.forEach(row => {
+                const containerId = containerIds[row.label];
+                if (!containerId) return;
+                
+                const container = document.getElementById(containerId);
+                container.innerHTML = '';
+                
+                row.hours.forEach(hourData => {
+                    const cell = document.createElement('div');
+                    
+                    let cellClass = 'hour-cell';
+                    if (hourData.status === 'OK') {
+                        cellClass += '';
+                    } else if (hourData.status === 'WARNING') {
+                        cellClass += ' hour-warning';
+                    } else if (hourData.status === 'DANGER') {
+                        cellClass += ' hour-danger';
+                    } else {
+                        cellClass += ' hour-inactive';
+                    }
+                    
+                    cell.className = cellClass;
+                    
+                    const tooltip = document.createElement('span');
+                    tooltip.className = 'tooltip';
+                    
+                    const formattedHour = (hourData.hour < 10 ? '0' : '') + hourData.hour + ':00';
+                    tooltip.innerHTML = `<strong>${row.label} at ${formattedHour}</strong><br>
+                        Uptime: ${hourData.uptime}%<br>
+                        Status: ${hourData.status || 'OK'}`;
+                    
+                    cell.appendChild(tooltip);
+                    container.appendChild(cell);
+                });
+            });
+        }
+
+        // Run on load
+        renderEmptyGrid();
+        refreshDashboard();
+        
+        // Auto refresh every 30 seconds
+        setInterval(refreshDashboard, 30000);
+    </script>
+</body>
+</html>
