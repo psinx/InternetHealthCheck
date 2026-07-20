@@ -140,7 +140,11 @@ main() {
         if [[ "$OSTYPE" == "darwin"* ]]; then
             ifconfig "$interface" >/dev/null 2>&1 && link_exists=true
         else
-            ip link show "$interface" >/dev/null 2>&1 && link_exists=true
+            if command -v ip >/dev/null 2>&1; then
+                ip link show "$interface" >/dev/null 2>&1 && link_exists=true
+            elif [[ -d "/sys/class/net/$interface" ]]; then
+                link_exists=true
+            fi
         fi
 
         [[ "$link_exists" != "true" ]] && continue
