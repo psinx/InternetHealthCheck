@@ -243,8 +243,10 @@ main() {
         local target_dir
         target_dir=$(dirname "$HTML_FILE")
         
-        # Write status.json to the same folder as the HTML dashboard
+        # Write status.json to target folder, /var/www/html/status.json, and /var/www/html/health/status.json
         generate_status_json "${target_dir}/status.json"
+        generate_status_json "/var/www/html/status.json" 2>/dev/null || true
+        generate_status_json "/var/www/html/health/status.json" 2>/dev/null || true
         
         # Copy the dashboard.html template to the target location if it changed or doesn't exist
         if [[ ! -f "$HTML_FILE" ]] || ! cmp -s "${SCRIPT_DIR}/templates/dashboard.html" "$HTML_FILE"; then
