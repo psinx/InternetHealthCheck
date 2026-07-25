@@ -23,6 +23,7 @@ LOG_TO_FILE=false
 REDUCE_DISK_WEAR=false
 HTML_FILE=""
 INTERFACE_OVERRIDE=""
+UPSTREAM_DNS=""
 RUN_DIAGNOSTICS=false
 TAG="[INTERNET-HEALTH-CHECK]"
 
@@ -44,6 +45,8 @@ Options:
   --html-file FILE      Generate a beautiful Pi-hole v6 style HTML status dashboard at FILE.
   --interfaces IFACES   Comma-separated list of interfaces to monitor (e.g. eth0,wlan0).
                         Defaults to auto-detecting all active interfaces.
+  --upstream-dns IP     Specify upstream DNS server IP to query (e.g. 1.1.1.3).
+                        Defaults to auto-detecting server_names from /etc/dnscrypt-proxy/dnscrypt-proxy.toml.
   --diagnose            Perform a real-time terminal diagnostics scan and exit.
   -h, --help            Show this help message
 
@@ -92,6 +95,10 @@ main() {
                 INTERFACE_OVERRIDE="$2"
                 shift 2
                 ;;
+            --upstream-dns)
+                UPSTREAM_DNS="$2"
+                shift 2
+                ;;
             --diagnose)
                 RUN_DIAGNOSTICS=true
                 shift
@@ -101,161 +108,248 @@ main() {
                 exit 0
                 ;;
             *)
-                echo "Unknown option: $1" >&2
+                echo "Unknown option: $1"
                 usage
                 exit 1
                 ;;
         esac
     done
 
-    # 1. Check if user wants real-time diagnostics
+    # Run diagnostics scan if requested
     if [[ "$RUN_DIAGNOSTICS" == "true" ]]; then
-        if [[ -n "$INTERFACE_OVERRIDE" ]]; then
-            IFS=',' read -r -a custom_ifaces <<< "$INTERFACE_OVERRIDE"
-            diagnose_cli "${custom_ifaces[@]}"
-        else
-            diagnose_cli
-        fi
+        diagnose_cli
         exit 0
     fi
 
-    # 2. Get target interfaces
+    # Determine interfaces to check
     local interfaces=()
     if [[ -n "$INTERFACE_OVERRIDE" ]]; then
-        IFS=',' read -r -a interfaces <<< "$INTERFACE_OVERRIDE"
+        IFS=',' read -ra interfaces <<< "$INTERFACE_OVERRIDE"
     else
-        interfaces=($(discover_interfaces))
+        while IFS= read -r iface; do
+            [[ -n "$iface" ]] && interfaces+=("$iface")
+        done < <(discover_interfaces)
     fi
 
-    WRITE_OCCURRED=false
-    rotate_log
+    if [[ ${#interfaces[@]} -eq 0 ]]; then
+        log "Error: No valid network interfaces discovered."
+        exit 1
+    fi
 
-    # Reset globals
-    STATUS_eth0_EXISTS=false
-    STATUS_wlan0_EXISTS=false
+    # Ensure log file rotation check if file logging enabled
+    if [[ "$LOG_TO_FILE" == "true" ]]; then
+        rotate_log
+    fi
 
-    for interface in "${interfaces[@]}"; do
-        # Verify interface exists
-        local link_exists=false
-        if [[ "$OSTYPE" == "darwin"* ]]; then
-            ifconfig "$interface" >/dev/null 2>&1 && link_exists=true
-        else
-            if command -v ip >/dev/null 2>&1; then
-                ip link show "$interface" >/dev/null 2>&1 && link_exists=true
-            elif [[ -d "/sys/class/net/$interface" ]]; then
-                link_exists=true
-            fi
-        fi
+    # Detect upstream resolver IP (e.g. 1.1.1.3 for cloudflare-family)
+    local detected_upstream
+    detected_upstream=$(detect_upstream_dns "$UPSTREAM_DNS")
 
-        [[ "$link_exists" != "true" ]] && continue
-        
-        # Mark interface as exists
-        eval "STATUS_${interface}_EXISTS=true"
+    # JSON accumulator structure for status generation
+    local json_ifaces=""
 
-        # Resolve IP on interface
+    # Process each interface
+    for iface in "${interfaces[@]}"; do
         local local_ip
-        local_ip=$(get_interface_ip "$interface")
+        local_ip=$(get_interface_ip "$iface")
 
-        # 3. Perform Ping Connectivity check
-        check_connectivity "$interface"
-        local connectivity="$CONNECTIVITY_RESULT"
-        local conn_lat="$CONNECTIVITY_LATENCY"
-        local conn_loss="$CONNECTIVITY_LOSS"
-        
-        eval "STATUS_${interface}_CONNECTIVITY=\"\$connectivity\""
-        eval "STATUS_${interface}_LOSS=\"\$conn_loss\""
-
-        # 4. Perform DNS chain queries if ping is operational
-        local dns_ok="true"
-        local p_ok=false p_lat=-1
-        local d_ok=false d_lat=-1
-        local c_ok=false c_lat=-1
-
-        if [[ "$connectivity" == "OK" && -n "$local_ip" ]]; then
-            check_dns_chain "$interface" "$local_ip"
-            dns_ok="$DNS_OK_RESULT"
-            
-            p_ok="$PIHOLE_OK"
-            p_lat="$PIHOLE_LATENCY"
-            d_ok="$DNSCRYPT_OK"
-            d_lat="$DNSCRYPT_LATENCY"
-            c_ok="$CLOUDFLARE_OK"
-            c_lat="$CLOUDFLARE_LATENCY"
+        if [[ -z "$local_ip" ]]; then
+            # Interface inactive / disconnected
+            CONNECTIVITY_RESULT="DOWN"
+            CONNECTIVITY_LATENCY=-1
+            CONNECTIVITY_LOSS=100
+            PIHOLE_OK=false
+            PIHOLE_LATENCY=-1
+            DNSCRYPT_OK=false
+            DNSCRYPT_LATENCY=-1
+            CLOUDFLARE_OK=false
+            CLOUDFLARE_LATENCY=-1
+            DNS_OK_RESULT="false"
         else
-            # Outage / Link down
-            dns_ok="false"
-            log "[$interface] DOWN - CONNECTIVITY OUTAGE detected"
-            syslog_alert "[$interface] DOWN - Connectivity Outage detected" "user.warn"
+            # 1. Connectivity ICMP Check
+            check_connectivity "$iface"
+
+            # 2. DNS Chain Resolution Check
+            check_dns_chain "$iface" "$local_ip"
         fi
 
-        eval "STATUS_${interface}_DNS=\"\$dns_ok\""
-        eval "STATUS_${interface}_PIHOLE=\"\$p_ok\""
-        eval "STATUS_${interface}_PIHOLE_LAT=\"\$p_lat\""
-        eval "STATUS_${interface}_DNSCRYPT=\"\$d_ok\""
-        eval "STATUS_${interface}_DNSCRYPT_LAT=\"\$d_lat\""
-        eval "STATUS_${interface}_CLOUDFLARE=\"\$c_ok\""
-        eval "STATUS_${interface}_CLOUDFLARE_LAT=\"\$c_lat\""
-
-        # 5. RAM state database logging
-        record_run "$interface" "$connectivity" "$dns_ok" "$p_ok" "$d_ok" "$c_ok" "$p_lat" "$d_lat" "$c_lat" "$conn_loss"
-
-        # 6. Smart Disk Logging (Zero Disk Wear engine)
-        local log_needed=true
-        if [[ "$REDUCE_DISK_WEAR" == "true" ]]; then
-            log_needed=false
-            
-            # Write to disk log if:
-            # - We detect a state change (healthy ↔ outage / warning)
-            # - Current state is DOWN (failures are always logged)
-            # - 24 hours have passed since the log file was updated (daily heartbeat)
-            if detect_state_change "$interface" "$connectivity" "$dns_ok"; then
-                log_needed=true
-                syslog_alert "[$interface] State changed: Connectivity=$connectivity DNS_OK=$dns_ok" "user.notice"
-            elif [[ "$connectivity" == "DOWN" || "$dns_ok" == "false" ]]; then
-                log_needed=true
+        # Check for state change to determine whether to write to persistent log
+        if detect_state_change "$iface" "$CONNECTIVITY_RESULT" "$DNS_OK_RESULT"; then
+            if [[ "$CONNECTIVITY_RESULT" == "OK" && "$DNS_OK_RESULT" == "true" ]]; then
+                log "[$iface] OK"
             else
-                # Check 24 hour threshold
-                local last_write_time=0
-                if [[ -f "$LOG_FILE" ]]; then
-                    if [[ "$OSTYPE" == "darwin"* ]]; then
-                        last_write_time=$(stat -f %m "$LOG_FILE" 2>/dev/null || echo 0)
-                    else
-                        last_write_time=$(stat -c %Y "$LOG_FILE" 2>/dev/null || echo 0)
-                    fi
-                fi
-                local current_time
-                current_time=$(date +%s)
-                if (( current_time - last_write_time >= 86400 )); then
-                    log_needed=true # Log 24-hour heartbeat
-                fi
+                log "[$iface] DOWN"
             fi
         fi
 
-        if [[ "$log_needed" == "true" ]]; then
-            if [[ "$connectivity" == "OK" && "$dns_ok" == "true" ]]; then
-                log "[$interface] OK"
-            fi
+        # Update stateless RAM history buffer
+        record_run "$iface" "$CONNECTIVITY_RESULT" "$DNS_OK_RESULT" "$PIHOLE_OK" "$DNSCRYPT_OK" "$CLOUDFLARE_OK" \
+                   "$PIHOLE_LATENCY" "$DNSCRYPT_LATENCY" "$CLOUDFLARE_LATENCY" "$CONNECTIVITY_LOSS"
+
+        # Build JSON block for interface
+        local iface_exists="true"
+        [[ -z "$local_ip" ]] && iface_exists="false"
+
+        local block
+        block=$(cat << EOF
+    "$iface": {
+      "exists": $iface_exists,
+      "connectivity": "$CONNECTIVITY_RESULT",
+      "dns_ok": $DNS_OK_RESULT,
+      "pihole": $PIHOLE_OK,
+      "dnscrypt": $DNSCRYPT_OK,
+      "cloudflare": $CLOUDFLARE_OK,
+      "latency_pihole": $PIHOLE_LATENCY,
+      "latency_dnscrypt": $DNSCRYPT_LATENCY,
+      "latency_cloudflare": $CLOUDFLARE_LATENCY,
+      "packet_loss": $CONNECTIVITY_LOSS
+    }
+EOF
+)
+        if [[ -n "$json_ifaces" ]]; then
+            json_ifaces="$json_ifaces,$block"
+        else
+            json_ifaces="$block"
         fi
     done
 
-    # 7. Dashboard JSON & HTML Generation
+    # Generate status.json & HTML dashboard if --html-file specified
     if [[ -n "$HTML_FILE" ]]; then
-        local target_dir
-        target_dir=$(dirname "$HTML_FILE")
-        
-        # Write status.json to target folder, /var/www/html/status.json, and /var/www/html/health/status.json
-        generate_status_json "${target_dir}/status.json"
-        generate_status_json "/var/www/html/status.json" 2>/dev/null || true
-        generate_status_json "/var/www/html/health/status.json" 2>/dev/null || true
-        
-        # Copy the dashboard.html template to the target location if it changed or doesn't exist
-        if [[ ! -f "$HTML_FILE" ]] || ! cmp -s "${SCRIPT_DIR}/templates/dashboard.html" "$HTML_FILE"; then
-            cp -f "${SCRIPT_DIR}/templates/dashboard.html" "$HTML_FILE" 2>/dev/null || sudo cp -f "${SCRIPT_DIR}/templates/dashboard.html" "$HTML_FILE" 2>/dev/null || true
+        generate_status_json "$json_ifaces" "$HTML_FILE"
+    fi
+}
+
+generate_status_json() {
+    local ifaces_json=$1 output_target=$2
+    local target_dir
+    target_dir=$(dirname "$output_target")
+    mkdir -p "$target_dir" 2>/dev/null
+
+    local json_target="$target_dir/status.json"
+
+    # Calculate overall system health
+    local system_status="Healthy"
+    if grep -q "DOWN" "$RAM_STATE_FILE" 2>/dev/null; then
+        system_status="Degraded"
+    fi
+
+    # Build 72h historical SLA grid from RAM buffer
+    local history_json
+    history_json=$(build_72h_history_json)
+
+    # Calculate 72h SLA percentage
+    local sla_pct
+    sla_pct=$(calculate_sla_percentage)
+
+    # Extract recent incidents
+    local incidents_json
+    incidents_json=$(extract_incidents_json)
+
+    cat << EOF > "$json_target"
+{
+  "timestamp": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+  "status": "$system_status",
+  "sla_percentage": $sla_pct,
+  "interfaces": {
+$ifaces_json
+  },
+  "history": $history_json,
+  "incidents": $incidents_json
+}
+EOF
+
+    # If output_target is an HTML file, copy index.html template alongside status.json
+    if [[ "$output_target" == *.html ]]; then
+        if [[ -f "${SCRIPT_DIR}/templates/dashboard.html" ]]; then
+            cp -f "${SCRIPT_DIR}/templates/dashboard.html" "$output_target" 2>/dev/null || true
         fi
     fi
 }
 
-# Sourcing guard: Only run main if executed directly
-if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
-    main "$@"
-fi
+build_72h_history_json() {
+    # Generate 72 hour array grouped by Today, Yesterday, 2 Days Ago
+    python3 -c '
+import os, json, time
+
+ram_file = os.environ.get("RAM_STATE_FILE", "/dev/shm/internet_health_history.txt")
+hours_data = {"Today": [100]*24, "Yesterday": [100]*24, "2 Days Ago": [100]*24}
+hours_status = {"Today": ["OK"]*24, "Yesterday": ["OK"]*24, "2 Days Ago": ["OK"]*24}
+
+if os.path.exists(ram_file):
+    now = time.time()
+    with open(ram_file, "r") as f:
+        for line in f:
+            parts = line.strip().split("|")
+            if len(parts) >= 4:
+                try:
+                    ts = float(parts[0])
+                    conn = parts[2]
+                    dns = parts[3]
+                    age_hours = int((now - ts) / 3600)
+                    if age_hours < 72:
+                        day_idx = age_hours // 24
+                        hour_idx = (23 - (age_hours % 24))
+                        day_label = ["Today", "Yesterday", "2 Days Ago"][day_idx]
+                        if conn == "DOWN" or dns == "false":
+                            hours_status[day_label][hour_idx] = "DANGER"
+                except Exception:
+                    pass
+
+result = []
+for label in ["2 Days Ago", "Yesterday", "Today"]:
+    day_cells = []
+    for h in range(24):
+        st = hours_status[label][h]
+        day_cells.append({"hour": h, "status": st, "uptime": 100 if st == "OK" else 0})
+    result.append({"label": label, "hours": day_cells})
+
+print(json.dumps(result))
+' 2>/dev/null || echo '[{"label":"Today","hours":[]},{"label":"Yesterday","hours":[]},{"label":"2 Days Ago","hours":[]}]'
+}
+
+calculate_sla_percentage() {
+    python3 -c '
+import os
+ram_file = os.environ.get("RAM_STATE_FILE", "/dev/shm/internet_health_history.txt")
+total = 0
+healthy = 0
+if os.path.exists(ram_file):
+    with open(ram_file, "r") as f:
+        for line in f:
+            parts = line.strip().split("|")
+            if len(parts) >= 4:
+                total += 1
+                if parts[2] == "OK" and parts[3] == "true":
+                    healthy += 1
+pct = (healthy / total * 100.0) if total > 0 else 100.0
+print(f"{pct:.2f}")
+' 2>/dev/null || echo "100.00"
+}
+
+extract_incidents_json() {
+    python3 -c '
+import os, json
+ram_file = os.environ.get("RAM_STATE_FILE", "/dev/shm/internet_health_history.txt")
+incidents = []
+if os.path.exists(ram_file):
+    with open(ram_file, "r") as f:
+        lines = f.readlines()
+    for line in reversed(lines):
+        parts = line.strip().split("|")
+        if len(parts) >= 4 and (parts[2] == "DOWN" or parts[3] == "false"):
+            ts_str = parts[1]
+            iface = parts[4] if len(parts) > 4 else "wlan0"
+            incidents.append({
+                "type": "outage",
+                "badge": "Outage",
+                "timestamp": f"{ts_str} ({iface})",
+                "description": "DOWN - CONNECTIVITY OUTAGE detected",
+                "duration": ""
+            })
+            if len(incidents) >= 10:
+                break
+print(json.dumps(incidents))
+' 2>/dev/null || echo '[]'
+}
+
+main "$@"
