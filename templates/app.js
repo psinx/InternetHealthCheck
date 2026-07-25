@@ -16,19 +16,54 @@
         if (!tooltipEl) {
             tooltipEl = document.createElement('div');
             tooltipEl.id = 'grid-custom-tooltip';
-            tooltipEl.style.cssText = 'position: absolute; display: none; background: #222d32; color: #fff; padding: 6px 12px; border-radius: 4px; font-size: 12px; font-weight: 600; box-shadow: 0 4px 10px rgba(0,0,0,0.3); z-index: 9999; pointer-events: none; white-space: nowrap; transition: opacity 0.15s ease-in-out; border: 1px solid #4b646f;';
+            tooltipEl.style.cssText = 'position: absolute; display: none; background: #222d32; color: #fff; padding: 8px 12px; border-radius: 6px; font-size: 12px; box-shadow: 0 4px 14px rgba(0,0,0,0.4); z-index: 9999; pointer-events: none; white-space: nowrap; transition: opacity 0.15s ease-in-out; border: 1px solid #4b646f;';
             document.body.appendChild(tooltipEl);
         }
         return tooltipEl;
     }
 
-    function attachTooltipEvents(cell, text) {
-        cell.setAttribute('title', text); // Fallback native title
-        cell.setAttribute('data-tooltip-text', text);
+    function renderMiniChainHtml(hourData, dayLabel, timeRange) {
+        const piOk = hourData.pihole !== undefined ? hourData.pihole : (hourData.status === 'OK');
+        const dnsOk = hourData.dnscrypt !== undefined ? hourData.dnscrypt : (hourData.status === 'OK');
+        const cfOk = hourData.cloudflare !== undefined ? hourData.cloudflare : (hourData.status === 'OK');
 
+        const badgeClass = hourData.status === 'OK' ? 'label label-success' : (hourData.status === 'DANGER' ? 'label label-danger' : (hourData.status === 'WARNING' ? 'label label-warning' : 'label label-default'));
+        const badgeText = hourData.status === 'OK' ? '100% Operational' : (hourData.status === 'DANGER' ? 'Outage' : (hourData.status === 'INACTIVE' ? 'Pending' : hourData.status));
+
+        const piStyle = piOk ? 'color: #00a65a;' : 'color: #dd4b39;';
+        const dnsStyle = dnsOk ? 'color: #00a65a;' : 'color: #dd4b39;';
+        const cfStyle = cfOk ? 'color: #00a65a;' : 'color: #dd4b39;';
+
+        const piLabel = 'Pi-hole (' + (piOk ? 'OK' : 'FAIL') + ')';
+        const dnsLabel = 'dnscrypt (' + (dnsOk ? 'OK' : 'FAIL') + ')';
+        const cfLabel = 'Cloudflare (' + (cfOk ? 'OK' : 'FAIL') + ')';
+
+        let html = '<div style="font-weight: bold; margin-bottom: 6px; border-bottom: 1px solid #4b646f; padding-bottom: 4px; display: flex; justify-content: space-between; align-items: center; gap: 15px;">' +
+                   '<span>' + dayLabel + ' ' + timeRange + '</span>' +
+                   '<span class="' + badgeClass + '">' + badgeText + '</span>' +
+                   '</div>';
+
+        html += '<div style="display: flex; align-items: center; gap: 6px; margin: 6px 0; background: #1a2226; padding: 5px 8px; border-radius: 4px; font-family: monospace; font-size: 11px;">' +
+                '<span style="color: #00a65a; font-weight: bold;">Client</span>' +
+                '<span style="color: #777;">&rarr;</span>' +
+                '<span style="' + piStyle + ' font-weight: bold;">' + piLabel + '</span>' +
+                '<span style="color: #777;">&rarr;</span>' +
+                '<span style="' + dnsStyle + ' font-weight: bold;">' + dnsLabel + '</span>' +
+                '<span style="color: #777;">&rarr;</span>' +
+                '<span style="' + cfStyle + ' font-weight: bold;">' + cfLabel + '</span>' +
+                '</div>';
+
+        if (hourData.earliest_issue) {
+            html += '<div style="font-size: 11px; color: #b8c7ce; margin-top: 4px;">First issue detected at <strong>' + hourData.earliest_issue + '</strong></div>';
+        }
+
+        return html;
+    }
+
+    function attachTooltipEvents(cell, hourData, dayLabel, timeRange) {
         cell.addEventListener('mouseenter', function(e) {
             const tip = getOrCreateTooltip();
-            tip.textContent = text;
+            tip.innerHTML = renderMiniChainHtml(hourData, dayLabel, timeRange);
             tip.style.display = 'block';
             tip.style.opacity = '1';
             positionTooltip(e);
@@ -49,7 +84,7 @@
     function positionTooltip(e) {
         if (!tooltipEl) return;
         const x = e.pageX;
-        const y = e.pageY - 38;
+        const y = e.pageY - 55;
         tooltipEl.style.left = (x - (tooltipEl.offsetWidth / 2)) + 'px';
         tooltipEl.style.top = y + 'px';
     }
@@ -65,8 +100,8 @@
                 const cell = document.createElement('div');
                 cell.className = 'hour-cell';
                 const timeRange = formatHourRange(h);
-                const text = labels[rowId] + ' ' + timeRange + ' (100% Operational)';
-                attachTooltipEvents(cell, text);
+                const defaultData = { status: 'OK', pihole: true, dnscrypt: true, cloudflare: true };
+                attachTooltipEvents(cell, defaultData, labels[rowId], timeRange);
                 container.appendChild(cell);
             }
         });
@@ -177,12 +212,7 @@
                 cell.className = cellClass;
                 
                 const timeRange = formatHourRange(hourData.hour);
-                let statusDesc = hourData.status === 'OK' ? '100% Operational' : (hourData.status === 'DANGER' ? 'Outage Detected' : (hourData.status === 'INACTIVE' ? 'Pending / Future Hour' : hourData.status));
-                if (hourData.earliest_issue) {
-                    statusDesc += ' — First detected at ' + hourData.earliest_issue;
-                }
-                const tooltipText = row.label + ' ' + timeRange + ' (' + statusDesc + ')';
-                attachTooltipEvents(cell, tooltipText);
+                attachTooltipEvents(cell, hourData, row.label, timeRange);
                 
                 container.appendChild(cell);
             });
