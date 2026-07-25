@@ -1,66 +1,68 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Pi-hole - Internet Health Dashboard</title>
-
-    <link rel="icon" href="/admin/img/favicons/favicon-32x32.png" sizes="32x32" type="image/png">
+    <title>Internet Health | Pi-hole System</title>
     
-    <!-- Pi-hole Native Fonts & Stylesheets -->
+    <!-- Pi-hole Native Fonts & FontAwesome -->
     <link rel="stylesheet" href="/admin/vendor/fonts/source-sans-pro/source-sans-pro.css">
     <link rel="stylesheet" href="/admin/vendor/bootstrap/css/bootstrap.min.css">
     <link rel="stylesheet" href="/admin/vendor/font-awesome/css/all.min.css">
     <link rel="stylesheet" href="/admin/vendor/adminLTE/AdminLTE.min.css">
     <link rel="stylesheet" href="/admin/style/pi-hole.css">
-    <link rel="stylesheet" href="/admin/style/themes/default-darker.css">
+    <link rel="stylesheet" href="/admin/style/themes/default-dark.css">
 
     <style>
-        body { background-color: #181a1b !important; color: #e8e6e3; font-family: 'Source Sans Pro', sans-serif; }
-        .main-sidebar { background-color: #111314 !important; }
-        .content-wrapper { background-color: #181a1b !important; }
-        .box { background-color: #222426 !important; border-top-color: #3c8dbc !important; color: #e8e6e3; border-radius: 6px; }
-        .box-header { border-bottom: 1px solid #33363a !important; }
-        .box-title { color: #fff !important; font-weight: 600; }
-        .table-bordered { border-color: #33363a !important; }
-        .table-bordered > tbody > tr > td { border-color: #33363a !important; color: #e8e6e3; }
+        body { font-family: 'Source Sans Pro', sans-serif; background-color: #1e282c; color: #b8c7ce; }
+        .wrapper { background-color: #1e282c; }
+        .content-wrapper { background-color: #222d32; margin-left: 230px; min-height: 100vh; padding: 20px; }
+        @media (max-width: 767px) { .content-wrapper { margin-left: 0; } }
         
-        /* 72h Uptime Grid Styling in Native Darker Theme */
-        .grid-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
-        .row-label { width: 100px; font-weight: bold; color: #aaa; font-size: 0.9em; }
+        /* 72h Uptime Grid Styling */
+        .grid-row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+        .row-label { width: 100px; font-weight: 600; color: #8aa4af; font-size: 0.95em; }
         .row-cells { display: flex; gap: 3px; flex-grow: 1; }
-        .hour-cell { flex: 1; height: 22px; background-color: #00a65a; border-radius: 3px; transition: transform 0.15s; }
-        .hour-cell:hover { transform: scaleY(1.2); }
+        .hour-cell { flex: 1; height: 24px; background-color: #00a65a; border-radius: 3px; transition: transform 0.15s; }
+        .hour-cell:hover { transform: scaleY(1.25); cursor: pointer; }
         .hour-cell.hour-warning { background-color: #f39c12; }
         .hour-cell.hour-danger { background-color: #dd4b39; }
-        .hour-cell.hour-inactive { background-color: #444; opacity: 0.4; }
+        .hour-cell.hour-inactive { background-color: #374850; opacity: 0.5; }
         
         /* DNS Chain Node Styling */
-        .chain-flow { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 0; }
-        .chain-node { background: #1a1c1d; border: 2px solid #00a65a; border-radius: 6px; padding: 12px 16px; flex: 1; text-align: center; }
+        .chain-flow { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 15px 5px; }
+        .chain-node { background: #1a2226; border: 2px solid #00a65a; border-radius: 6px; padding: 15px 20px; flex: 1; text-align: center; }
         .chain-node.node-fail { border-color: #dd4b39; }
-        .node-name { font-weight: bold; font-size: 1.1em; color: #fff; }
-        .node-status-desc { font-size: 0.85em; color: #aaa; font-family: monospace; }
-        .connector-arrow { font-size: 1.4em; color: #00a65a; font-weight: bold; }
+        .node-name { font-weight: bold; font-size: 1.15em; color: #fff; }
+        .node-status-desc { font-size: 0.88em; color: #8aa4af; font-family: monospace; margin-top: 4px; }
+        .connector-arrow { font-size: 1.5em; color: #00a65a; font-weight: bold; }
+        
+        /* AdminLTE Box Dark Theme Adjustments */
+        .box { background: #1a2226; border-top: 3px solid #3c8dbc; border-radius: 3px; margin-bottom: 20px; box-shadow: 0 1px 1px rgba(0,0,0,0.1); }
+        .box.box-success { border-top-color: #00a65a; }
+        .box.box-primary { border-top-color: #3c8dbc; }
+        .box.box-info { border-top-color: #00c0ef; }
+        .box.box-default { border-top-color: #d2d6de; }
+        .box-header { color: #fff; padding: 12px 15px; border-bottom: 1px solid #222d32; }
+        .box-title { font-size: 1.1em; font-weight: 600; margin: 0; }
+        .table-bordered { border: 1px solid #222d32; }
+        .table-bordered > tbody > tr > td { border: 1px solid #222d32; color: #b8c7ce; }
     </style>
 </head>
-<body class="hold-transition sidebar-mini">
+<body class="hold-transition sidebar-mini layout-boxed">
 <div class="wrapper">
 
-    <!-- Native Pi-hole Top Header Navbar -->
+    <!-- Header Navbar -->
     <header class="main-header">
         <a href="/" class="logo">
-            <span class="logo-mini"><b>P</b>h</span>
-            <span class="logo-lg"><b>Pi-hole</b></span>
+            <span class="logo-mini">P<strong>h</strong></span>
+            <span class="logo-lg">Pi-<strong>hole</strong></span>
         </a>
         <nav class="navbar navbar-static-top">
-            <a href="#" class="sidebar-toggle" data-toggle="push-menu" role="button">
-                <span class="sr-only">Toggle navigation</span>
-            </a>
-            <div class="navbar-custom-menu">
+            <div class="navbar-custom-menu pull-right">
                 <ul class="nav navbar-nav">
                     <li>
-                        <a href="/admin/" class="btn btn-primary btn-sm" style="margin-top: 10px; margin-right: 15px; color: white !important; font-weight: bold; background-color: #3c8dbc; border: none;">
+                        <a href="/admin/" class="btn btn-primary btn-sm" style="margin-top: 10px; margin-right: 15px; color: #fff !important; font-weight: bold; background-color: #3c8dbc; border: none; border-radius: 3px; padding: 6px 12px;">
                             <i class="fas fa-tachometer-alt"></i> Pi-hole Admin Dashboard &rarr;
                         </a>
                     </li>
@@ -69,22 +71,22 @@
         </nav>
     </header>
 
-    <!-- Native Pi-hole Left Sidebar with ONLY 2 Items -->
+    <!-- Sidebar Navigation -->
     <aside class="main-sidebar">
         <section class="sidebar">
-            <div class="user-panel" style="padding: 12px 10px;">
+            <div class="user-panel" style="padding: 15px 10px;">
                 <div class="pull-left image">
                     <img class="logo-img" src="/admin/img/logo.svg" alt="Pi-hole logo" width="45" height="65">
                 </div>
                 <div class="pull-left info" style="padding-left: 10px;">
-                    <p style="margin-bottom: 5px; font-weight: bold;">Pi-hole System</p>
+                    <p style="margin-bottom: 5px; font-weight: bold; color: #fff;">Pi-hole System</p>
                     <span class="label label-success"><i class="fa fa-circle"></i> Active</span>
                 </div>
             </div>
             <ul class="sidebar-menu" data-widget="tree">
-                <li class="header text-uppercase">Navigation</li>
+                <li class="header text-uppercase" style="color: #4b646f; background: #1a2226; padding: 10px 25px 10px 15px; font-size: 12px;">Navigation</li>
                 <li class="active">
-                    <a href="/">
+                    <a href="/" style="color: #fff; background: #1e282c; border-left-color: #3c8dbc;">
                         <i class="fa fa-fw menu-icon fa-heartbeat text-red"></i> <span>Internet Health</span>
                     </a>
                 </li>
@@ -98,11 +100,11 @@
     </aside>
 
     <!-- Main Content Area -->
-    <div class="content-wrapper" style="min-height: 900px; padding: 15px;">
+    <div class="content-wrapper">
         <section class="content-header" style="padding-bottom: 15px;">
-            <h1>
+            <h1 style="color: #fff; margin: 0; font-size: 24px;">
                 Internet Health Diagnostics
-                <small style="color: #aaa;">Real-time DNS Chain & SLA Uptime</small>
+                <small style="color: #8aa4af; font-size: 14px;">Real-time DNS Chain & SLA Uptime</small>
             </h1>
         </section>
 
@@ -202,7 +204,7 @@
                     <h3 class="box-title"><i class="fas fa-exclamation-triangle"></i> Recent Events & Outages Log</h3>
                 </div>
                 <div class="box-body" id="incident-list">
-                    <div class="text-center text-muted" style="padding: 10px;">
+                    <div class="text-center text-muted" style="padding: 10px; color: #8aa4af;">
                         No incidents logged in the last 72 hours.
                     </div>
                 </div>
@@ -210,10 +212,6 @@
         </section>
     </div>
 </div>
-
-<script src="/admin/vendor/jquery/jquery.min.js"></script>
-<script src="/admin/vendor/bootstrap/js/bootstrap.min.js"></script>
-<script src="/admin/vendor/adminLTE/adminlte.min.js"></script>
 
 <script>
     (function() {
@@ -232,7 +230,7 @@
         }
 
         async function refreshDashboard() {
-            const paths = ['status.json', '/health/status.json', '/dev/shm/status.json'];
+            const paths = ['/health/status.json', 'status.json', '/dev/shm/status.json'];
             let data = null;
             for (const path of paths) {
                 try {
