@@ -272,7 +272,7 @@ EOF
 }
 
 build_72h_history_json() {
-    # Combine RAM history file and persistent disk log for exact local clock hour mapping
+    # Combine RAM history file and persistent disk log for exact local clock hour mapping and DNS node health
     python3 -c '
 import os, json, time
 from datetime import datetime
@@ -282,6 +282,9 @@ log_file = os.environ.get("LOG_FILE", "")
 
 hours_status = {"Today": ["OK"]*24, "Yesterday": ["OK"]*24, "2 Days Ago": ["OK"]*24}
 hours_earliest = {"Today": [""]*24, "Yesterday": [""]*24, "2 Days Ago": [""]*24}
+hours_nodes = {"Today": [{"pi": True, "dns": True, "cf": True}]*24,
+               "Yesterday": [{"pi": True, "dns": True, "cf": True}]*24,
+               "2 Days Ago": [{"pi": True, "dns": True, "cf": True}]*24}
 
 now_dt = datetime.now()
 today_date = now_dt.date()
@@ -302,10 +305,15 @@ if os.path.exists(ram_file):
                     dt = datetime.fromtimestamp(ts)
                     conn = parts[2]
                     dns = parts[3]
+                    pihole_ok = (parts[5] == "true") if len(parts) > 5 else (conn == "OK" and dns == "true")
+                    dnscrypt_ok = (parts[6] == "true") if len(parts) > 6 else (conn == "OK" and dns == "true")
+                    cloudflare_ok = (parts[7] == "true") if len(parts) > 7 else (conn == "OK" and dns == "true")
+
                     days_diff = (today_date - dt.date()).days
                     if 0 <= days_diff < 3:
                         day_label = ["Today", "Yesterday", "2 Days Ago"][days_diff]
                         hour_idx = dt.hour
+                        hours_nodes[day_label][hour_idx] = {"pi": pihole_ok, "dns": dnscrypt_ok, "cf": cloudflare_ok}
                         if conn == "DOWN" or dns == "false":
                             hours_status[day_label][hour_idx] = "DANGER"
                             if not hours_earliest[day_label][hour_idx]:
@@ -342,7 +350,16 @@ for label in ["2 Days Ago", "Yesterday", "Today"]:
     for h in range(24):
         st = hours_status[label][h]
         earliest = hours_earliest[label][h]
-        day_cells.append({"hour": h, "status": st, "uptime": 100 if st == "OK" else 0, "earliest_issue": earliest})
+        nodes = hours_nodes[label][h]
+        day_cells.append({
+            "hour": h,
+            "status": st,
+            "uptime": 100 if st == "OK" else 0,
+            "earliest_issue": earliest,
+            "pihole": nodes["pi"],
+            "dnscrypt": nodes["dns"],
+            "cloudflare": nodes["cf"]
+        })
     result.append({"label": label, "hours": day_cells})
 
 print(json.dumps(result))
