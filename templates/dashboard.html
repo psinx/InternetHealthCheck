@@ -4,49 +4,56 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Internet Health | Pi-hole System</title>
+
+    <!-- Pi-hole Favicons -->
+    <link rel="apple-touch-icon" href="/admin/img/favicons/apple-touch-icon.png" sizes="180x180">
+    <link rel="icon" href="/admin/img/favicons/favicon-32x32.png" sizes="32x32" type="image/png">
+    <link rel="icon" href="/admin/img/favicons/favicon-16x16.png" sizes="16x16" type="image/png">
     
-    <!-- Pi-hole Native Fonts & FontAwesome -->
+    <!-- Pi-hole Native Fonts & Stylesheets -->
     <link rel="stylesheet" href="/admin/vendor/fonts/source-sans-pro/source-sans-pro.css">
     <link rel="stylesheet" href="/admin/vendor/bootstrap/css/bootstrap.min.css">
     <link rel="stylesheet" href="/admin/vendor/font-awesome/css/all.min.css">
     <link rel="stylesheet" href="/admin/vendor/adminLTE/AdminLTE.min.css">
     <link rel="stylesheet" href="/admin/style/pi-hole.css">
-    <link rel="stylesheet" href="/admin/style/themes/default-dark.css">
+    
+    <!-- Pi-hole Light Theme Stylesheets -->
+    <link rel="stylesheet" href="/admin/style/themes/default-light.css">
 
     <style>
-        body { font-family: 'Source Sans Pro', sans-serif; background-color: #1e282c; color: #b8c7ce; }
-        .wrapper { background-color: #1e282c; }
-        .content-wrapper { background-color: #222d32; margin-left: 230px; min-height: 100vh; padding: 20px; }
+        body { font-family: 'Source Sans Pro', sans-serif; background-color: #ecf0f5; color: #333; }
+        .wrapper { background-color: #ecf0f5; }
+        .content-wrapper { background-color: #ecf0f5; margin-left: 230px; min-height: 100vh; padding: 20px; }
         @media (max-width: 767px) { .content-wrapper { margin-left: 0; } }
         
-        /* 72h Uptime Grid Styling */
+        /* 72h Uptime Grid Styling in Light Theme */
         .grid-row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
-        .row-label { width: 100px; font-weight: 600; color: #8aa4af; font-size: 0.95em; }
+        .row-label { width: 100px; font-weight: 600; color: #555; font-size: 0.95em; }
         .row-cells { display: flex; gap: 3px; flex-grow: 1; }
         .hour-cell { flex: 1; height: 24px; background-color: #00a65a; border-radius: 3px; transition: transform 0.15s; }
         .hour-cell:hover { transform: scaleY(1.25); cursor: pointer; }
         .hour-cell.hour-warning { background-color: #f39c12; }
         .hour-cell.hour-danger { background-color: #dd4b39; }
-        .hour-cell.hour-inactive { background-color: #374850; opacity: 0.5; }
+        .hour-cell.hour-inactive { background-color: #d2d6de; opacity: 0.7; }
         
         /* DNS Chain Node Styling */
         .chain-flow { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 15px 5px; }
-        .chain-node { background: #1a2226; border: 2px solid #00a65a; border-radius: 6px; padding: 15px 20px; flex: 1; text-align: center; }
+        .chain-node { background: #f9f9f9; border: 2px solid #00a65a; border-radius: 6px; padding: 15px 20px; flex: 1; text-align: center; }
         .chain-node.node-fail { border-color: #dd4b39; }
-        .node-name { font-weight: bold; font-size: 1.15em; color: #fff; }
-        .node-status-desc { font-size: 0.88em; color: #8aa4af; font-family: monospace; margin-top: 4px; }
+        .node-name { font-weight: bold; font-size: 1.15em; color: #333; }
+        .node-status-desc { font-size: 0.88em; color: #666; font-family: monospace; margin-top: 4px; }
         .connector-arrow { font-size: 1.5em; color: #00a65a; font-weight: bold; }
         
-        /* AdminLTE Box Dark Theme Adjustments */
-        .box { background: #1a2226; border-top: 3px solid #3c8dbc; border-radius: 3px; margin-bottom: 20px; box-shadow: 0 1px 1px rgba(0,0,0,0.1); }
+        /* AdminLTE Light Box Styling */
+        .box { background: #ffffff; border-top: 3px solid #3c8dbc; border-radius: 3px; margin-bottom: 20px; box-shadow: 0 1px 1px rgba(0,0,0,0.1); border-left: 1px solid #d2d6de; border-right: 1px solid #d2d6de; border-bottom: 1px solid #d2d6de; }
         .box.box-success { border-top-color: #00a65a; }
         .box.box-primary { border-top-color: #3c8dbc; }
         .box.box-info { border-top-color: #00c0ef; }
         .box.box-default { border-top-color: #d2d6de; }
-        .box-header { color: #fff; padding: 12px 15px; border-bottom: 1px solid #222d32; }
-        .box-title { font-size: 1.1em; font-weight: 600; margin: 0; }
-        .table-bordered { border: 1px solid #222d32; }
-        .table-bordered > tbody > tr > td { border: 1px solid #222d32; color: #b8c7ce; }
+        .box-header { color: #444; padding: 12px 15px; border-bottom: 1px solid #f4f4f4; background: #fff; }
+        .box-title { font-size: 1.1em; font-weight: 600; margin: 0; color: #333; }
+        .table-bordered { border: 1px solid #f4f4f4; }
+        .table-bordered > tbody > tr > td { border: 1px solid #f4f4f4; color: #444; }
     </style>
 </head>
 <body class="hold-transition sidebar-mini layout-boxed">
@@ -102,9 +109,9 @@
     <!-- Main Content Area -->
     <div class="content-wrapper">
         <section class="content-header" style="padding-bottom: 15px;">
-            <h1 style="color: #fff; margin: 0; font-size: 24px;">
+            <h1 style="color: #333; margin: 0; font-size: 24px;">
                 Internet Health Diagnostics
-                <small style="color: #8aa4af; font-size: 14px;">Real-time DNS Chain & SLA Uptime</small>
+                <small style="color: #777; font-size: 14px;">Real-time DNS Chain & SLA Uptime</small>
             </h1>
         </section>
 
@@ -204,7 +211,7 @@
                     <h3 class="box-title"><i class="fas fa-exclamation-triangle"></i> Recent Events & Outages Log</h3>
                 </div>
                 <div class="box-body" id="incident-list">
-                    <div class="text-center text-muted" style="padding: 10px; color: #8aa4af;">
+                    <div class="text-center text-muted" style="padding: 10px; color: #777;">
                         No incidents logged in the last 72 hours.
                     </div>
                 </div>
