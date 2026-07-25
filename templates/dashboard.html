@@ -21,12 +21,12 @@
     <link rel="stylesheet" href="/admin/style/themes/default-light.css">
 
     <style>
-        body { font-family: 'Source Sans Pro', sans-serif; background-color: #222d32; color: #333; margin: 0; }
-        .wrapper { background-color: #222d32; min-height: 100vh; position: relative; }
+        html, body { height: 100%; margin: 0; padding: 0; font-family: 'Source Sans Pro', sans-serif; background-color: #ecf0f5; color: #333; }
+        .wrapper { min-height: 100vh; position: relative; background-color: #ecf0f5; }
         .main-header .logo { background-color: #367fa9 !important; color: #ffffff !important; font-size: 20px; font-weight: bold; }
         .main-header .navbar { background-color: #3c8dbc !important; min-height: 50px; }
-        .main-sidebar { background-color: #222d32 !important; min-height: 100%; position: absolute; top: 0; bottom: 0; left: 0; width: 230px; z-index: 810; padding-top: 50px; }
-        .content-wrapper { background-color: #ecf0f5; margin-left: 230px; min-height: 100vh; padding: 20px; }
+        .main-sidebar { background-color: #222d32 !important; position: absolute; top: 0; bottom: 0; left: 0; width: 230px; z-index: 810; padding-top: 50px; }
+        .content-wrapper { background-color: #ecf0f5 !important; margin-left: 230px; min-height: calc(100vh - 50px); padding: 20px; box-sizing: border-box; }
         @media (max-width: 767px) { .content-wrapper { margin-left: 0; } .main-sidebar { position: relative; min-height: auto; } }
         
         /* 72h Uptime Grid Styling with Time Hover Tooltips */
