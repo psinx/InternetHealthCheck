@@ -159,7 +159,6 @@ check_dns_chain() {
         DNS_OK_RESULT="false"
         
         # Log error block
-        log "[$interface] DOWN"
         log_dns_results "$interface" "$PIHOLE_OK" "$DNSCRYPT_OK" "$CLOUDFLARE_OK" "$upstream_ip"
         
         local failure_point
@@ -167,7 +166,6 @@ check_dns_chain() {
         log_dns_diagnostics "$interface" "$failure_point"
         
         log "[$interface] Issue: DNS issue detected. Connectivity still OK"
-        log "[$interface] DOWN"
     fi
 }
 
