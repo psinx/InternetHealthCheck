@@ -200,9 +200,9 @@ generate_status_json() {
                     local total_h_runs
                     total_h_runs=$(echo "$records" | wc -l)
                     local fail_h_runs
-                    fail_h_runs=$(echo "$records" | grep -vc ",OK,true," || echo 0)
+                    fail_h_runs=$(echo "$records" | grep -vc ",OK,true," || true)
                     local outage_h_runs
-                    outage_h_runs=$(echo "$records" | grep -c ",DOWN," || echo 0)
+                    outage_h_runs=$(echo "$records" | grep -c ",DOWN," || true)
                     
                     if (( outage_h_runs > 0 )); then
                         hour_status="DANGER"
