@@ -305,8 +305,8 @@ if os.path.exists(ram_file):
                     dt = datetime.fromtimestamp(ts)
                     conn = parts[2]
                     dns = parts[3]
-                    pihole_ok = (parts[5] == "true") if len(parts) > 5 else (conn == "OK" and dns == "true")
-                    dnscrypt_ok = (parts[6] == "true") if len(parts) > 6 else (conn == "OK" and dns == "true")
+                    pihole_ok = (parts[5] == "true") if len(parts) > 5 else True
+                    dnscrypt_ok = (parts[6] == "true") if len(parts) > 6 else True
                     cloudflare_ok = (parts[7] == "true") if len(parts) > 7 else (conn == "OK" and dns == "true")
 
                     days_diff = (today_date - dt.date()).days
@@ -349,7 +349,10 @@ if log_file and os.path.exists(log_file):
                                     elif "Fail via Cloudflare" in line:
                                         hours_nodes[day_label][hour_idx]["cf"] = False
                                     elif "CONNECTIVITY OUTAGE" in line or "Fail during Ping" in line:
-                                        hours_nodes[day_label][hour_idx] = {"pi": False, "dns": False, "cf": False}
+                                        # External WAN outage: Local services (Pi-hole & dnscrypt) remain OK; external Cloudflare fails!
+                                        hours_nodes[day_label][hour_idx]["pi"] = True
+                                        hours_nodes[day_label][hour_idx]["dns"] = True
+                                        hours_nodes[day_label][hour_idx]["cf"] = False
                         except Exception:
                             pass
     except Exception:
