@@ -224,17 +224,17 @@
         const container = document.getElementById('incident-list');
         if (!container) return;
         if (!incidents || incidents.length === 0) {
-            container.innerHTML = '<div class="text-center text-muted" style="padding: 10px; color: #777;">No incidents logged in the last 72 hours.</div>';
+            container.innerHTML = '<div class="text-center text-muted" style="padding: 10px;">No incidents logged in the last 72 hours.</div>';
             return;
         }
         container.innerHTML = '';
         incidents.forEach(item => {
             const row = document.createElement('div');
-            row.style.cssText = 'padding: 8px 10px; border-bottom: 1px dashed #eee; font-size: 0.95em;';
+            row.style.cssText = 'padding: 8px 10px; border-bottom: 1px dashed rgba(128,128,128,0.3); font-size: 0.95em;';
             const badgeClass = item.badge === 'Outage' ? 'label label-danger' : 'label label-warning';
             row.innerHTML = '<span class="' + badgeClass + '" style="margin-right: 8px;">' + item.badge + '</span>' +
-                            '<strong style="color: #333;">' + item.timestamp + '</strong> — ' +
-                            '<span style="color: #555;">' + item.description + '</span>';
+                            '<strong>' + item.timestamp + '</strong> — ' +
+                            '<span style="opacity: 0.85;">' + item.description + '</span>';
             container.appendChild(row);
         });
     }
