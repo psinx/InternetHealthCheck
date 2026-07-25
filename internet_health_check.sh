@@ -272,7 +272,7 @@ EOF
 }
 
 build_72h_history_json() {
-    # Combine RAM history file and persistent disk log for exact local clock hour mapping and DNS node health
+    # Combine RAM history file and persistent disk log for exact local clock hour mapping and root-cause node health
     python3 -c '
 import os, json, time
 from datetime import datetime
@@ -294,7 +294,7 @@ current_hour = now_dt.hour
 for h in range(current_hour + 1, 24):
     hours_status["Today"][h] = "INACTIVE"
 
-# 1. Read RAM history file
+# 1. Read RAM history file (stores exact per-component check booleans)
 if os.path.exists(ram_file):
     with open(ram_file, "r") as f:
         for line in f:
@@ -313,15 +313,15 @@ if os.path.exists(ram_file):
                     if 0 <= days_diff < 3:
                         day_label = ["Today", "Yesterday", "2 Days Ago"][days_diff]
                         hour_idx = dt.hour
+                        hours_nodes[day_label][hour_idx] = {"pi": pihole_ok, "dns": dnscrypt_ok, "cf": cloudflare_ok}
                         if conn == "DOWN" or dns == "false":
                             hours_status[day_label][hour_idx] = "DANGER"
-                            hours_nodes[day_label][hour_idx] = {"pi": pihole_ok, "dns": dnscrypt_ok, "cf": cloudflare_ok}
                             if not hours_earliest[day_label][hour_idx]:
                                 hours_earliest[day_label][hour_idx] = dt.strftime("%Y-%m-%d %H:%M:%S")
                 except Exception:
                     pass
 
-# 2. Read Persistent Disk Log (overrides RAM entries for outages with node failure breakdown)
+# 2. Read Persistent Disk Log (pinpoints exact root-cause failing components)
 if log_file and os.path.exists(log_file):
     try:
         with open(log_file, "r") as f:
@@ -341,6 +341,7 @@ if log_file and os.path.exists(log_file):
                                     if not hours_earliest[day_label][hour_idx]:
                                         hours_earliest[day_label][hour_idx] = time_str
                                     
+                                    # Mark ONLY the specific component that failed its check
                                     if "Fail via Pi-hole" in line:
                                         hours_nodes[day_label][hour_idx]["pi"] = False
                                     elif "Fail via dnscrypt" in line:
@@ -361,9 +362,6 @@ for label in ["2 Days Ago", "Yesterday", "Today"]:
         st = hours_status[label][h]
         earliest = hours_earliest[label][h]
         nodes = hours_nodes[label][h]
-        # If cell is marked DANGER/outage but nodes were unparsed, mark all nodes as failed
-        if st == "DANGER" and nodes["pi"] and nodes["dns"] and nodes["cf"]:
-            nodes = {"pi": False, "dns": False, "cf": False}
         day_cells.append({
             "hour": h,
             "status": st,
