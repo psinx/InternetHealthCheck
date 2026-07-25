@@ -80,6 +80,7 @@ main() {
             --log-file)
                 LOG_FILE="$2"
                 LOG_TO_FILE=true
+                export LOG_FILE="$LOG_FILE"
                 mkdir -p "$(dirname "$LOG_FILE")" 2>/dev/null
                 shift 2
                 ;;
@@ -234,7 +235,7 @@ generate_status_json() {
         system_status="Degraded"
     fi
 
-    # Build 72h historical SLA grid from RAM buffer
+    # Build 72h historical SLA grid combining RAM buffer and persistent disk log
     local history_json
     history_json=$(build_72h_history_json)
 
@@ -242,7 +243,7 @@ generate_status_json() {
     local sla_pct
     sla_pct=$(calculate_sla_percentage)
 
-    # Extract recent incidents
+    # Extract recent incidents combining disk log and RAM history
     local incidents_json
     incidents_json=$(extract_incidents_json)
 
@@ -271,16 +272,19 @@ EOF
 }
 
 build_72h_history_json() {
-    # Generate 72 hour array grouped by Today, Yesterday, 2 Days Ago with earliest issue timestamps
+    # Combine RAM history file and persistent disk log for reboot survival & outage overriding
     python3 -c '
 import os, json, time
 
 ram_file = os.environ.get("RAM_STATE_FILE", "/dev/shm/internet_health_history.txt")
+log_file = os.environ.get("LOG_FILE", "")
+
 hours_status = {"Today": ["OK"]*24, "Yesterday": ["OK"]*24, "2 Days Ago": ["OK"]*24}
 hours_earliest = {"Today": [""]*24, "Yesterday": [""]*24, "2 Days Ago": [""]*24}
+now = time.time()
 
+# 1. Read RAM history file
 if os.path.exists(ram_file):
-    now = time.time()
     with open(ram_file, "r") as f:
         for line in f:
             parts = line.strip().split("|")
@@ -302,6 +306,31 @@ if os.path.exists(ram_file):
                 except Exception:
                     pass
 
+# 2. Read Persistent Disk Log (Disk entries override RAM entries for outages across reboots)
+if log_file and os.path.exists(log_file):
+    try:
+        with open(log_file, "r") as f:
+            for line in f:
+                if "[INTERNET-HEALTH-CHECK]" in line and "DOWN" in line:
+                    parts = line.strip().split()
+                    if len(parts) >= 2:
+                        time_str = parts[0] + " " + parts[1]
+                        try:
+                            struct_time = time.strptime(time_str, "%Y-%m-%d %H:%M:%S")
+                            ts = time.mktime(struct_time)
+                            age_hours = int((now - ts) / 3600)
+                            if age_hours < 72:
+                                day_idx = age_hours // 24
+                                hour_idx = (23 - (age_hours % 24))
+                                day_label = ["Today", "Yesterday", "2 Days Ago"][day_idx]
+                                hours_status[day_label][hour_idx] = "DANGER"
+                                if not hours_earliest[day_label][hour_idx]:
+                                    hours_earliest[day_label][hour_idx] = time_str
+                        except Exception:
+                            pass
+    except Exception:
+        pass
+
 result = []
 for label in ["2 Days Ago", "Yesterday", "Today"]:
     day_cells = []
@@ -319,6 +348,7 @@ calculate_sla_percentage() {
     python3 -c '
 import os
 ram_file = os.environ.get("RAM_STATE_FILE", "/dev/shm/internet_health_history.txt")
+log_file = os.environ.get("LOG_FILE", "")
 total = 0
 healthy = 0
 if os.path.exists(ram_file):
@@ -338,24 +368,61 @@ extract_incidents_json() {
     python3 -c '
 import os, json
 ram_file = os.environ.get("RAM_STATE_FILE", "/dev/shm/internet_health_history.txt")
+log_file = os.environ.get("LOG_FILE", "")
 incidents = []
-if os.path.exists(ram_file):
-    with open(ram_file, "r") as f:
-        lines = f.readlines()
-    for line in reversed(lines):
-        parts = line.strip().split("|")
-        if len(parts) >= 4 and (parts[2] == "DOWN" or parts[3] == "false"):
-            ts_str = parts[1]
-            iface = parts[4] if len(parts) > 4 else "wlan0"
-            incidents.append({
-                "type": "outage",
-                "badge": "Outage",
-                "timestamp": f"{ts_str} ({iface})",
-                "description": "DOWN - CONNECTIVITY OUTAGE detected",
-                "duration": ""
-            })
-            if len(incidents) >= 10:
-                break
+seen_events = set()
+
+# Parse persistent disk log first for reboot survival
+if log_file and os.path.exists(log_file):
+    try:
+        with open(log_file, "r") as f:
+            lines = f.readlines()
+        for line in reversed(lines):
+            if "[INTERNET-HEALTH-CHECK]" in line and "DOWN" in line:
+                parts = line.strip().split()
+                if len(parts) >= 5:
+                    time_str = parts[0] + " " + parts[1]
+                    iface = parts[3].strip("[]")
+                    key = f"{time_str}_{iface}"
+                    if key not in seen_events:
+                        seen_events.add(key)
+                        incidents.append({
+                            "type": "outage",
+                            "badge": "Outage",
+                            "timestamp": f"{time_str} ({iface})",
+                            "description": "DOWN - CONNECTIVITY OUTAGE detected",
+                            "duration": ""
+                        })
+                        if len(incidents) >= 10:
+                            break
+    except Exception:
+        pass
+
+# Supplement from RAM file if available
+if len(incidents) < 10 and os.path.exists(ram_file):
+    try:
+        with open(ram_file, "r") as f:
+            lines = f.readlines()
+        for line in reversed(lines):
+            parts = line.strip().split("|")
+            if len(parts) >= 4 and (parts[2] == "DOWN" or parts[3] == "false"):
+                ts_str = parts[1]
+                iface = parts[4] if len(parts) > 4 else "wlan0"
+                key = f"{ts_str}_{iface}"
+                if key not in seen_events:
+                    seen_events.add(key)
+                    incidents.append({
+                        "type": "outage",
+                        "badge": "Outage",
+                        "timestamp": f"{ts_str} ({iface})",
+                        "description": "DOWN - CONNECTIVITY OUTAGE detected",
+                        "duration": ""
+                    })
+                    if len(incidents) >= 10:
+                        break
+    except Exception:
+        pass
+
 print(json.dumps(incidents))
 ' 2>/dev/null || echo '[]'
 }
