@@ -1,141 +1,312 @@
 <?
-mg.include("scripts/lua/header_authenticated.lp","r")
+mg.include('header.lp','r')
 ?>
+</head>
+<body class="<?=theme.name?> hold-transition sidebar-mini <? if pihole.boxedlayout() then ?>layout-boxed<? end ?>">
+<div class="wrapper">
 
-<script src="/admin/scripts/js/health.js"></script>
-
-<style>
-    /* 72h Uptime Grid Styling in Native Darker Theme */
-    .grid-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
-    .row-label { width: 100px; font-weight: bold; color: #aaa; font-size: 0.9em; }
-    .row-cells { display: flex; gap: 3px; flex-grow: 1; }
-    .hour-cell { flex: 1; height: 22px; background-color: #00a65a; border-radius: 3px; transition: transform 0.15s; }
-    .hour-cell:hover { transform: scaleY(1.2); }
-    .hour-cell.hour-warning { background-color: #f39c12; }
-    .hour-cell.hour-danger { background-color: #dd4b39; }
-    .hour-cell.hour-inactive { background-color: #444; opacity: 0.4; }
-    
-    /* DNS Chain Node Styling */
-    .chain-flow { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 0; }
-    .chain-node { background: rgba(0, 0, 0, 0.2); border: 2px solid #00a65a; border-radius: 6px; padding: 12px 16px; flex: 1; text-align: center; }
-    .chain-node.node-fail { border-color: #dd4b39; }
-    .node-name { font-weight: bold; font-size: 1.1em; color: #fff; }
-    .node-status-desc { font-size: 0.85em; color: #aaa; font-family: monospace; }
-    .connector-arrow { font-size: 1.4em; color: #00a65a; font-weight: bold; }
-</style>
-
-<!-- Main Header -->
-<section class="content-header" style="padding-bottom: 15px;">
-    <h1>
-        Internet Health Diagnostics
-        <small>Real-time DNS Chain & SLA Uptime</small>
-    </h1>
-</section>
-
-<section class="content">
-    <!-- Live DNS Chain Box -->
-    <div class="box box-success">
-        <div class="box-header with-border">
-            <h3 class="box-title"><i class="fas fa-network-wired"></i> Live DNS Chain Diagnostics</h3>
-            <div class="box-tools pull-right">
-                <span id="header-status-label" class="label label-success" style="font-size: 0.9em;">● Status: Operational</span>
+    <!-- Header Navbar -->
+    <header class="main-header">
+        <a href="<?=webhome?>" class="logo">
+            <span class="logo-mini">P<strong>h</strong></span>
+            <span class="logo-lg">Pi-<strong>hole</strong></span>
+        </a>
+        <nav class="navbar navbar-static-top">
+            <a href="#" class="sidebar-toggle" data-toggle="push-menu" role="button">
+                <span class="sr-only">Toggle navigation</span>
+            </a>
+            <div class="navbar-custom-menu">
+                <ul class="nav navbar-nav">
+                    <li>
+                        <a href="<?=webhome?>" class="btn btn-primary btn-sm" style="margin-top: 10px; margin-right: 15px; color: white !important; font-weight: bold; background-color: #3c8dbc; border: none;">
+                            <i class="fas fa-tachometer-alt"></i> Pi-hole Admin Dashboard &rarr;
+                        </a>
+                    </li>
+                </ul>
             </div>
-        </div>
-        <div class="box-body">
-            <div class="chain-flow">
-                <div id="node-client" class="chain-node">
-                    <div class="node-name">CLIENT</div>
-                    <div class="node-status-desc">Local Machine (Active)</div>
+        </nav>
+    </header>
+
+    <!-- Sidebar Navigation with ONLY 2 Items -->
+    <aside class="main-sidebar">
+        <section class="sidebar">
+            <div class="user-panel" style="padding: 12px 10px;">
+                <div class="pull-left image">
+                    <img class="logo-img" src="<?=webhome?>img/logo.svg" alt="Pi-hole logo" width="45" height="65">
                 </div>
-                <div id="arrow-1" class="connector-arrow">&rarr;</div>
-                <div id="node-pihole" class="chain-node">
-                    <div class="node-name">Pi-hole</div>
-                    <div id="node-pihole-desc" class="node-status-desc">127.0.0.1:53 (OK)</div>
-                </div>
-                <div id="arrow-2" class="connector-arrow">&rarr;</div>
-                <div id="node-dnscrypt" class="chain-node">
-                    <div class="node-name">dnscrypt-proxy</div>
-                    <div id="node-dnscrypt-desc" class="node-status-desc">127.0.0.1:5053 (OK)</div>
-                </div>
-                <div id="arrow-3" class="connector-arrow">&rarr;</div>
-                <div id="node-cloudflare" class="chain-node">
-                    <div class="node-name">Cloudflare (DoH)</div>
-                    <div id="node-cloudflare-desc" class="node-status-desc">1.1.1.1:53 (OK)</div>
+                <div class="pull-left info" style="padding-left: 10px;">
+                    <p style="margin-bottom: 5px; font-weight: bold;">Pi-hole System</p>
+                    <span class="label label-success"><i class="fa fa-circle"></i> Active</span>
                 </div>
             </div>
-        </div>
-    </div>
+            <ul class="sidebar-menu" data-widget="tree">
+                <li class="header text-uppercase">Navigation</li>
+                <li class="active">
+                    <a href="/">
+                        <i class="fa fa-fw menu-icon fa-heartbeat text-red"></i> <span>Internet Health</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="<?=webhome?>">
+                        <i class="fa fa-fw menu-icon fa-home"></i> <span>Pi-hole Admin</span>
+                    </a>
+                </li>
+            </ul>
+        </section>
+    </aside>
 
-    <!-- 72h Uptime Grid Box -->
-    <div class="box box-primary">
-        <div class="box-header with-border">
-            <h3 class="box-title"><i class="fas fa-history"></i> Historical Uptime (Last 72 Hours)</h3>
-            <div class="box-tools pull-right">
-                <span id="grid-uptime-pct" class="label label-success" style="font-size: 0.9em;">100% SLA</span>
-            </div>
-        </div>
-        <div class="box-body">
-            <div class="grid-row">
-                <div class="row-label">Today</div>
-                <div class="row-cells" id="row-today"></div>
-            </div>
-            <div class="grid-row">
-                <div class="row-label">Yesterday</div>
-                <div class="row-cells" id="row-yesterday"></div>
-            </div>
-            <div class="grid-row">
-                <div class="row-label">2 Days Ago</div>
-                <div class="row-cells" id="row-2daysago"></div>
-            </div>
-        </div>
-    </div>
+    <!-- Main Content Area -->
+    <div class="content-wrapper" style="min-height: 900px; padding: 15px;">
+        <section class="content-header" style="padding-bottom: 15px;">
+            <h1>
+                Internet Health Diagnostics
+                <small style="color: #aaa;">Real-time DNS Chain & SLA Uptime</small>
+            </h1>
+        </section>
 
-    <!-- Stat Boxes Row -->
-    <div class="row">
-        <div class="col-md-6">
-            <div class="box box-info">
+        <section class="content">
+            <!-- Live DNS Chain Box -->
+            <div class="box box-success">
                 <div class="box-header with-border">
-                    <h3 class="box-title"><i class="fas fa-tachometer-alt"></i> Hop Latency Benchmark</h3>
+                    <h3 class="box-title"><i class="fas fa-network-wired"></i> Live DNS Chain Diagnostics</h3>
+                    <div class="box-tools pull-right">
+                        <span id="header-status-label" class="label label-success" style="font-size: 0.9em;">● Status: Operational</span>
+                    </div>
                 </div>
                 <div class="box-body">
-                    <table class="table table-bordered">
-                        <tr><td>Pi-hole DNS Hop</td><td><span id="lat-pi" class="label label-success">4ms</span></td></tr>
-                        <tr><td>dnscrypt-proxy Hop</td><td><span id="lat-dns" class="label label-success">0ms</span></td></tr>
-                        <tr><td>Cloudflare Upstream</td><td><span id="lat-cf" class="label label-success">16ms</span></td></tr>
-                    </table>
+                    <div class="chain-flow">
+                        <div id="node-client" class="chain-node">
+                            <div class="node-name">CLIENT</div>
+                            <div class="node-status-desc">Local Machine (Active)</div>
+                        </div>
+                        <div id="arrow-1" class="connector-arrow">&rarr;</div>
+                        <div id="node-pihole" class="chain-node">
+                            <div class="node-name">Pi-hole</div>
+                            <div id="node-pihole-desc" class="node-status-desc">127.0.0.1:53 (OK)</div>
+                        </div>
+                        <div id="arrow-2" class="connector-arrow">&rarr;</div>
+                        <div id="node-dnscrypt" class="chain-node">
+                            <div class="node-name">dnscrypt-proxy</div>
+                            <div id="node-dnscrypt-desc" class="node-status-desc">127.0.0.1:5053 (OK)</div>
+                        </div>
+                        <div id="arrow-3" class="connector-arrow">&rarr;</div>
+                        <div id="node-cloudflare" class="chain-node">
+                            <div class="node-name">Cloudflare (DoH)</div>
+                            <div id="node-cloudflare-desc" class="node-status-desc">1.1.1.1:53 (OK)</div>
+                        </div>
+                    </div>
                 </div>
             </div>
-        </div>
-        <div class="col-md-6">
-            <div class="box box-info">
+
+            <!-- 72h Uptime Grid Box -->
+            <div class="box box-primary">
                 <div class="box-header with-border">
-                    <h3 class="box-title"><i class="fas fa-plug"></i> Network Interfaces</h3>
+                    <h3 class="box-title"><i class="fas fa-history"></i> Historical Uptime (Last 72 Hours)</h3>
+                    <div class="box-tools pull-right">
+                        <span id="grid-uptime-pct" class="label label-success" style="font-size: 0.9em;">100% SLA</span>
+                    </div>
                 </div>
                 <div class="box-body">
-                    <table class="table table-bordered">
-                        <tr><td>Wired Link (eth0)</td><td><span id="if-eth" class="label label-success">Online</span></td></tr>
-                        <tr><td>Wireless Link (wlan0)</td><td><span id="if-wlan" class="label label-success">Online</span></td></tr>
-                        <tr><td>Packet Loss (Ping)</td><td><span id="if-loss" class="label label-success">0.0%</span></td></tr>
-                    </table>
+                    <div class="grid-row">
+                        <div class="row-label">Today</div>
+                        <div class="row-cells" id="row-today"></div>
+                    </div>
+                    <div class="grid-row">
+                        <div class="row-label">Yesterday</div>
+                        <div class="row-cells" id="row-yesterday"></div>
+                    </div>
+                    <div class="grid-row">
+                        <div class="row-label">2 Days Ago</div>
+                        <div class="row-cells" id="row-2daysago"></div>
+                    </div>
                 </div>
             </div>
-        </div>
-    </div>
 
-    <!-- Incidents Box -->
-    <div class="box box-default">
-        <div class="box-header with-border">
-            <h3 class="box-title"><i class="fas fa-exclamation-triangle"></i> Recent Events & Outages Log</h3>
-        </div>
-        <div class="box-body" id="incident-list">
-            <div class="text-center text-muted" style="padding: 10px;">
-                No incidents logged in the last 72 hours.
+            <!-- Stat Boxes Row -->
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="box box-info">
+                        <div class="box-header with-border">
+                            <h3 class="box-title"><i class="fas fa-tachometer-alt"></i> Hop Latency Benchmark</h3>
+                        </div>
+                        <div class="box-body">
+                            <table class="table table-bordered">
+                                <tr><td>Pi-hole DNS Hop</td><td><span id="lat-pi" class="label label-success">4ms</span></td></tr>
+                                <tr><td>dnscrypt-proxy Hop</td><td><span id="lat-dns" class="label label-success">0ms</span></td></tr>
+                                <tr><td>Cloudflare Upstream</td><td><span id="lat-cf" class="label label-success">16ms</span></td></tr>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="box box-info">
+                        <div class="box-header with-border">
+                            <h3 class="box-title"><i class="fas fa-plug"></i> Network Interfaces</h3>
+                        </div>
+                        <div class="box-body">
+                            <table class="table table-bordered">
+                                <tr><td>Wired Link (eth0)</td><td><span id="if-eth" class="label label-success">Online</span></td></tr>
+                                <tr><td>Wireless Link (wlan0)</td><td><span id="if-wlan" class="label label-success">Online</span></td></tr>
+                                <tr><td>Packet Loss (Ping)</td><td><span id="if-loss" class="label label-success">0.0%</span></td></tr>
+                            </table>
+                        </div>
+                    </div>
+                </div>
             </div>
-        </div>
-    </div>
-</section>
 
-<?
-mg.include("scripts/lua/footer.lp","r")
-?>
-<script src="/admin/scripts/js/health.js"></script>
+            <!-- Incidents Box -->
+            <div class="box box-default">
+                <div class="box-header with-border">
+                    <h3 class="box-title"><i class="fas fa-exclamation-triangle"></i> Recent Events & Outages Log</h3>
+                </div>
+                <div class="box-body" id="incident-list">
+                    <div class="text-center text-muted" style="padding: 10px;">
+                        No incidents logged in the last 72 hours.
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+</div>
+
+<script>
+    (function() {
+        function renderEmptyGrid() {
+            const rows = ['row-today', 'row-yesterday', 'row-2daysago'];
+            rows.forEach(rowId => {
+                const container = document.getElementById(rowId);
+                if (!container) return;
+                container.innerHTML = '';
+                for (let h = 0; h < 24; h++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'hour-cell';
+                    container.appendChild(cell);
+                }
+            });
+        }
+
+        async function refreshDashboard() {
+            const paths = ['/health/status.json', '/status.json', '/dev/shm/status.json'];
+            let data = null;
+            for (const path of paths) {
+                try {
+                    const res = await fetch(path + '?t=' + Date.now());
+                    if (res.ok) {
+                        data = await res.json();
+                        break;
+                    }
+                } catch (e) {}
+            }
+            if (data) updateUI(data);
+        }
+
+        function updateUI(data) {
+            const activeStatus = data.status || 'Healthy';
+            const headerLabel = document.getElementById('header-status-label');
+            if (headerLabel) {
+                headerLabel.className = activeStatus === 'Healthy' ? 'label label-success' : 'label label-danger';
+                headerLabel.textContent = '● Status: ' + activeStatus;
+            }
+
+            let activeIface = null;
+            if (data.interfaces) {
+                if (data.interfaces.eth0 && data.interfaces.eth0.exists) activeIface = data.interfaces.eth0;
+                else if (data.interfaces.wlan0 && data.interfaces.wlan0.exists) activeIface = data.interfaces.wlan0;
+                
+                updateInterfaceRow('if-eth', data.interfaces.eth0);
+                updateInterfaceRow('if-wlan', data.interfaces.wlan0);
+                
+                if (activeIface) {
+                    const lossVal = activeIface.packet_loss !== undefined ? activeIface.packet_loss : 0.0;
+                    const lossEl = document.getElementById('if-loss');
+                    if (lossEl) {
+                        lossEl.textContent = lossVal.toFixed(1) + '%';
+                        lossEl.className = 'label ' + (lossVal > 0 ? 'label-danger' : 'label-success');
+                    }
+                }
+            }
+
+            if (activeIface && activeIface.connectivity === 'OK') {
+                updateNodeState('node-pihole', 'node-pihole-desc', activeIface.pihole, '127.0.0.1:53');
+                updateNodeState('node-dnscrypt', 'node-dnscrypt-desc', activeIface.dnscrypt, '127.0.0.1:5053');
+                updateNodeState('node-cloudflare', 'node-cloudflare-desc', activeIface.cloudflare, '1.1.1.1:53');
+                
+                updateLatencyText('lat-pi', activeIface.latency_pihole);
+                updateLatencyText('lat-dns', activeIface.latency_dnscrypt);
+                updateLatencyText('lat-cf', activeIface.latency_cloudflare);
+            }
+
+            if (data.history) renderHistoricalGrid(data.history);
+
+            if (data.sla_percentage !== undefined) {
+                const slaEl = document.getElementById('grid-uptime-pct');
+                if (slaEl) slaEl.textContent = data.sla_percentage.toFixed(2) + '% SLA';
+            }
+        }
+
+        function updateInterfaceRow(elementId, iface) {
+            const el = document.getElementById(elementId);
+            if (!el) return;
+            if (!iface || !iface.exists) { el.textContent = 'Inactive'; el.className = 'label label-default'; }
+            else if (iface.connectivity === 'DOWN') { el.textContent = 'Offline'; el.className = 'label label-danger'; }
+            else { el.textContent = 'Online'; el.className = 'label label-success'; }
+        }
+
+        function updateNodeState(nodeId, descId, isOk, portLabel) {
+            const nodeEl = document.getElementById(nodeId);
+            const descEl = document.getElementById(descId);
+            if (!nodeEl || !descEl) return;
+            nodeEl.className = isOk ? 'chain-node' : 'chain-node node-fail';
+            descEl.textContent = portLabel + (isOk ? ' (OK)' : ' (FAIL)');
+        }
+
+        function updateLatencyText(elId, val) {
+            const el = document.getElementById(elId);
+            if (!el) return;
+            if (val === undefined || val === -1 || val === null) {
+                el.textContent = 'TIMEOUT'; el.className = 'label label-danger';
+            } else {
+                el.textContent = val + 'ms'; el.className = 'label label-success';
+            }
+        }
+
+        function renderHistoricalGrid(history) {
+            const containerIds = { 'Today': 'row-today', 'Yesterday': 'row-yesterday', '2 Days Ago': 'row-2daysago' };
+            history.forEach(row => {
+                const containerId = containerIds[row.label];
+                if (!containerId) return;
+                const container = document.getElementById(containerId);
+                if (!container) return;
+                container.innerHTML = '';
+                row.hours.forEach(hourData => {
+                    const cell = document.createElement('div');
+                    let cellClass = 'hour-cell';
+                    if (hourData.status === 'WARNING') cellClass += ' hour-warning';
+                    else if (hourData.status === 'DANGER') cellClass += ' hour-danger';
+                    else if (hourData.status !== 'OK') cellClass += ' hour-inactive';
+                    cell.className = cellClass;
+                    container.appendChild(cell);
+                });
+            });
+        }
+
+        // Inline initial JSON injection to ensure instant, zero-flicker UI render
+        const initialData = <?
+        local sf = io.open("/var/www/html/health/status.json", "r")
+        if sf then
+            local sc = sf:read("*all")
+            sf:close()
+            mg.write(sc)
+        else
+            mg.write("null")
+        end
+        ?>;
+        if (initialData) updateUI(initialData);
+
+        renderEmptyGrid();
+        refreshDashboard();
+        setInterval(refreshDashboard, 30000);
+    })();
+</script>
+</body>
+</html>
