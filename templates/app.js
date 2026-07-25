@@ -1,6 +1,17 @@
 (function() {
+    function pad(n) {
+        return n < 10 ? '0' + n : '' + n;
+    }
+
+    function formatHourRange(h) {
+        const start = pad(h) + ':00';
+        const end = pad((h + 1) % 24) + ':00';
+        return start + ' - ' + end;
+    }
+
     function renderEmptyGrid() {
         const rows = ['row-today', 'row-yesterday', 'row-2daysago'];
+        const labels = { 'row-today': 'Today', 'row-yesterday': 'Yesterday', 'row-2daysago': '2 Days Ago' };
         rows.forEach(rowId => {
             const container = document.getElementById(rowId);
             if (!container) return;
@@ -8,6 +19,8 @@
             for (let h = 0; h < 24; h++) {
                 const cell = document.createElement('div');
                 cell.className = 'hour-cell';
+                const timeRange = formatHourRange(h);
+                cell.setAttribute('title', labels[rowId] + ' ' + timeRange + ' (100% Operational)');
                 container.appendChild(cell);
             }
         });
@@ -114,6 +127,11 @@
                 else if (hourData.status === 'DANGER') cellClass += ' hour-danger';
                 else if (hourData.status !== 'OK') cellClass += ' hour-inactive';
                 cell.className = cellClass;
+                
+                const timeRange = formatHourRange(hourData.hour);
+                const statusDesc = hourData.status === 'OK' ? '100% Operational' : (hourData.status === 'DANGER' ? 'Outage Detected' : hourData.status);
+                cell.setAttribute('title', row.label + ' ' + timeRange + ' (' + statusDesc + ')');
+                
                 container.appendChild(cell);
             });
         });
