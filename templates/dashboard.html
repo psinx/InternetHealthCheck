@@ -1,468 +1,138 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Pi-hole - Internet Health Dashboard</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+    <link rel="icon" href="/admin/img/favicons/favicon-32x32.png" sizes="32x32" type="image/png">
+    
+    <!-- Pi-hole Native Fonts & Stylesheets -->
+    <link rel="stylesheet" href="/admin/vendor/fonts/source-sans-pro/source-sans-pro.css">
+    <link rel="stylesheet" href="/admin/vendor/bootstrap/css/bootstrap.min.css">
+    <link rel="stylesheet" href="/admin/vendor/font-awesome/css/all.min.css">
+    <link rel="stylesheet" href="/admin/vendor/adminLTE/AdminLTE.min.css">
+    <link rel="stylesheet" href="/admin/style/pi-hole.css">
+    <link rel="stylesheet" href="/admin/style/themes/default-darker.css">
+
     <style>
-        :root {
-            /* Pi-hole v6 Dark Theme (Slate/Tailwind style) */
-            --bg-color: #0f172a;          /* Slate-900 */
-            --card-bg: #1e293b;           /* Slate-800 */
-            --card-border: #334155;       /* Slate-700 */
-            --sidebar-bg: #0b0f19;        /* Deep Slate-950 */
-            --brand-bg: #090b11;          /* Ultra dark for logo */
-            
-            --success: #22c55e;           /* Green-500 */
-            --success-glow: rgba(34, 197, 94, 0.15);
-            --warning: #eab308;           /* Yellow-500 */
-            --warning-glow: rgba(234, 179, 8, 0.15);
-            --danger: #ef4444;            /* Red-500 */
-            --danger-glow: rgba(239, 68, 68, 0.15);
-            --info-blue: #3b82f6;         /* Blue-500 */
-            
-            --text-main: #f8fafc;         /* Slate-50 */
-            --text-muted: #94a3b8;        /* Slate-400 */
-        }
-
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-        }
-
-        body {
-            font-family: 'Inter', system-ui, -apple-system, sans-serif;
-            background-color: var(--bg-color);
-            color: var(--text-main);
-            min-height: 100vh;
-            display: flex;
-        }
-
-        /* Sidebar Navigation */
-        .sidebar {
-            width: 240px;
-            background-color: var(--sidebar-bg);
-            flex-shrink: 0;
-            display: flex;
-            flex-direction: column;
-            border-right: 1px solid var(--card-border);
-        }
-
-        .brand-logo {
-            background-color: var(--brand-bg);
-            padding: 1.25rem 1rem;
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-            border-bottom: 1px solid var(--card-border);
-        }
-
-        .logo-img {
-            width: 28px;
-            height: 28px;
-            background: #ef4444; /* Pi-hole red logo */
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: bold;
-            color: white;
-            font-size: 0.75rem;
-            position: relative;
-        }
-
-        .logo-img::before {
-            content: '☘';
-            color: #22c55e;
-            font-size: 1.1rem;
-            position: absolute;
-            top: -9px;
-            right: -4px;
-        }
-
-        .brand-name {
-            font-size: 1.2rem;
-            font-weight: 700;
-            color: white;
-            letter-spacing: -0.2px;
-        }
-
-        .sidebar-menu {
-            list-style: none;
-            padding: 1rem 0.5rem;
-            display: flex;
-            flex-direction: column;
-            gap: 0.35rem;
-        }
-
-        .menu-item a {
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-            padding: 0.65rem 0.75rem;
-            color: var(--text-muted);
-            text-decoration: none;
-            font-size: 0.9rem;
-            font-weight: 500;
-            border-radius: 6px;
-            transition: all 0.15s ease;
-        }
-
-        .menu-item:hover a {
-            color: white;
-            background-color: rgba(255, 255, 255, 0.05);
-        }
-
-        .menu-item.active a {
-            color: white;
-            background-color: rgba(255, 255, 255, 0.08);
-            border: 1px solid rgba(255, 255, 255, 0.05);
-        }
-
-        .menu-icon {
-            font-size: 1.1rem;
-            color: var(--text-muted);
-            opacity: 0.8;
-        }
-
-        .menu-item.active .menu-icon {
-            color: var(--success);
-            opacity: 1;
-        }
-
-        /* Main Content area */
-        .content-area {
-            flex-grow: 1;
-            display: flex;
-            flex-direction: column;
-            min-width: 0;
-        }
-
-        /* Top Navbar */
-        .navbar {
-            background-color: var(--card-bg);
-            border-bottom: 1px solid var(--card-border);
-            padding: 1rem 1.5rem;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .nav-title {
-            font-size: 1.1rem;
-            font-weight: 600;
-        }
-
-        .nav-user {
-            display: flex;
-            align-items: center;
-            gap: 1.25rem;
-        }
-
-        .admin-btn {
-            background-color: var(--info-blue);
-            color: white;
-            padding: 0.45rem 0.9rem;
-            border-radius: 6px;
-            text-decoration: none;
-            font-weight: 600;
-            font-size: 0.85rem;
-            display: inline-flex;
-            align-items: center;
-            gap: 0.4rem;
-            transition: background 0.2s ease;
-        }
-
-        .admin-btn:hover {
-            background-color: #2563eb;
-        }
-
-        .nav-user-item {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            font-size: 0.85rem;
-            color: var(--text-muted);
-        }
-
-        .status-dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background-color: var(--success);
-            box-shadow: 0 0 8px var(--success);
-        }
-
-        /* Dashboard Container */
-        .dashboard {
-            padding: 1.5rem;
-            flex-grow: 1;
-            overflow-y: auto;
-        }
-
-        /* Cards & Container */
-        .card {
-            background-color: var(--card-bg);
-            border: 1px solid var(--card-border);
-            border-radius: 8px;
-            margin-bottom: 1.25rem;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
-        }
-
-        .card-header {
-            padding: 0.9rem 1.25rem;
-            font-weight: 600;
-            font-size: 0.95rem;
-            border-bottom: 1px solid var(--card-border);
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-        }
-
-        .card-body {
-            padding: 1.25rem;
-        }
-
-        /* Live DNS Chain Node Layout */
-        .chain-flow {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 0.5rem;
-            flex-wrap: wrap;
-            padding: 0.5rem 0;
-        }
-
-        .chain-node {
-            background-color: rgba(15, 23, 42, 0.6);
-            border: 2px solid var(--card-border);
-            border-radius: 8px;
-            padding: 0.9rem 1.1rem;
-            flex: 1;
-            min-width: 140px;
-            text-align: center;
-            transition: all 0.3s ease;
-        }
-
-        .chain-node.node-pass {
-            border-color: var(--success);
-            box-shadow: 0 0 12px var(--success-glow);
-        }
-
-        .chain-node.node-fail {
-            border-color: var(--danger);
-            box-shadow: 0 0 12px var(--danger-glow);
-        }
-
-        .node-name {
-            font-weight: 700;
-            font-size: 1rem;
-            margin-bottom: 0.25rem;
-        }
-
-        .node-status-desc {
-            font-size: 0.78rem;
-            color: var(--text-muted);
-            font-family: 'JetBrains Mono', monospace;
-        }
-
-        .connector-arrow {
-            font-size: 1.2rem;
-            color: var(--card-border);
-            font-weight: bold;
-        }
-
-        .connector-arrow.arrow-active {
-            color: var(--success);
-        }
-
-        /* Stats Grid */
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-            gap: 1.25rem;
-            margin-bottom: 1.25rem;
-        }
-
-        .stat-line {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 0.5rem 0;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-            font-size: 0.88rem;
-        }
-
-        .stat-line:last-child {
-            border-bottom: none;
-        }
-
-        .stat-value {
-            font-family: 'JetBrains Mono', monospace;
-            font-weight: 600;
-        }
-
-        /* 72h Uptime Grid */
-        .grid-row {
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-            margin-bottom: 0.5rem;
-        }
-
-        .row-label {
-            width: 90px;
-            font-size: 0.82rem;
-            color: var(--text-muted);
-            font-weight: 500;
-            flex-shrink: 0;
-        }
-
-        .row-cells {
-            display: flex;
-            gap: 3px;
-            flex-grow: 1;
-        }
-
-        .hour-cell {
-            flex: 1;
-            height: 24px;
-            background-color: var(--success);
-            border-radius: 3px;
-            position: relative;
-            cursor: pointer;
-            transition: transform 0.15s ease;
-        }
-
-        .hour-cell:hover {
-            transform: scaleY(1.2);
-        }
-
-        .hour-cell.hour-warning { background-color: var(--warning); }
-        .hour-cell.hour-danger { background-color: var(--danger); }
-        .hour-cell.hour-inactive { background-color: #334155; opacity: 0.4; }
-
-        /* Tooltip */
-        .hour-cell .tooltip {
-            visibility: hidden;
-            width: 140px;
-            background-color: #090d16;
-            color: #fff;
-            text-align: center;
-            border-radius: 6px;
-            padding: 6px;
-            position: absolute;
-            z-index: 100;
-            bottom: 125%;
-            left: 50%;
-            margin-left: -70px;
-            opacity: 0;
-            transition: opacity 0.2s;
-            font-size: 0.75rem;
-            border: 1px solid var(--card-border);
-            pointer-events: none;
-        }
-
-        .hour-cell:hover .tooltip {
-            visibility: visible;
-            opacity: 1;
-        }
-
-        /* Term Colors */
-        .term-green { color: var(--success); }
-        .term-orange { color: var(--warning); }
-        .term-red { color: var(--danger); }
-
-        /* Error Overlay */
-        #error-overlay {
-            display: none;
-            background-color: var(--danger-glow);
-            border: 1px solid var(--danger);
-            border-radius: 6px;
-            padding: 0.85rem 1rem;
-            margin-bottom: 1rem;
-            font-size: 0.88rem;
-            color: #fca5a5;
-        }
+        body { background-color: #181a1b !important; color: #e8e6e3; font-family: 'Source Sans Pro', sans-serif; }
+        .main-sidebar { background-color: #111314 !important; }
+        .content-wrapper { background-color: #181a1b !important; }
+        .box { background-color: #222426 !important; border-top-color: #3c8dbc !important; color: #e8e6e3; border-radius: 6px; }
+        .box-header { border-bottom: 1px solid #33363a !important; }
+        .box-title { color: #fff !important; font-weight: 600; }
+        .table-bordered { border-color: #33363a !important; }
+        .table-bordered > tbody > tr > td { border-color: #33363a !important; color: #e8e6e3; }
+        
+        /* 72h Uptime Grid Styling in Native Darker Theme */
+        .grid-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+        .row-label { width: 100px; font-weight: bold; color: #aaa; font-size: 0.9em; }
+        .row-cells { display: flex; gap: 3px; flex-grow: 1; }
+        .hour-cell { flex: 1; height: 22px; background-color: #00a65a; border-radius: 3px; transition: transform 0.15s; }
+        .hour-cell:hover { transform: scaleY(1.2); }
+        .hour-cell.hour-warning { background-color: #f39c12; }
+        .hour-cell.hour-danger { background-color: #dd4b39; }
+        .hour-cell.hour-inactive { background-color: #444; opacity: 0.4; }
+        
+        /* DNS Chain Node Styling */
+        .chain-flow { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 0; }
+        .chain-node { background: #1a1c1d; border: 2px solid #00a65a; border-radius: 6px; padding: 12px 16px; flex: 1; text-align: center; }
+        .chain-node.node-fail { border-color: #dd4b39; }
+        .node-name { font-weight: bold; font-size: 1.1em; color: #fff; }
+        .node-status-desc { font-size: 0.85em; color: #aaa; font-family: monospace; }
+        .connector-arrow { font-size: 1.4em; color: #00a65a; font-weight: bold; }
     </style>
 </head>
-<body>
-    
-    <!-- Single Sidebar Navigation -->
-    <aside class="sidebar">
-        <div class="brand-logo">
-            <div class="logo-img">Pi</div>
-            <span class="brand-name">Pi-hole</span>
-        </div>
-        <ul class="sidebar-menu">
-            <li class="menu-item active"><a href="/"><span class="menu-icon">⚡</span> Internet Health</a></li>
-            <li class="menu-item"><a href="/admin/"><span class="menu-icon">📊</span> Pi-hole Admin</a></li>
-        </ul>
-    </aside>
+<body class="hold-transition sidebar-mini">
+<div class="wrapper">
 
-    <!-- Main Content Panel -->
-    <main class="content-area">
-        
-        <!-- Navbar -->
-        <nav class="navbar">
-            <div class="nav-title">Internet Health Diagnostics</div>
-            <div class="nav-user">
-                <a href="/admin/" class="admin-btn">
-                    <span>Pi-hole Admin Dashboard</span> ➔
-                </a>
-                <div class="nav-user-item">
-                    <span id="nav-status-dot" class="status-dot"></span>
-                    <span id="nav-status-text" style="color:white; font-weight:600;">Operational</span>
-                </div>
+    <!-- Native Pi-hole Top Header Navbar -->
+    <header class="main-header">
+        <a href="/" class="logo">
+            <span class="logo-mini"><b>P</b>h</span>
+            <span class="logo-lg"><b>Pi-hole</b></span>
+        </a>
+        <nav class="navbar navbar-static-top">
+            <a href="#" class="sidebar-toggle" data-toggle="push-menu" role="button">
+                <span class="sr-only">Toggle navigation</span>
+            </a>
+            <div class="navbar-custom-menu">
+                <ul class="nav navbar-nav">
+                    <li>
+                        <a href="/admin/" class="btn btn-primary btn-sm" style="margin-top: 10px; margin-right: 15px; color: white !important; font-weight: bold; background-color: #3c8dbc; border: none;">
+                            <i class="fas fa-tachometer-alt"></i> Pi-hole Admin Dashboard &rarr;
+                        </a>
+                    </li>
+                </ul>
             </div>
         </nav>
+    </header>
 
-        <!-- Dashboard Widgets -->
-        <section class="dashboard">
-            
-            <!-- Error Overlay -->
-            <div id="error-overlay">
-                <strong>Status Data Offline:</strong> Generating live health data. The dashboard will auto-populate automatically.
-            </div>
-
-            <!-- Live DNS Chain Box -->
-            <div class="card">
-                <div class="card-header">
-                    <span>Live DNS Chain Diagnostics</span>
-                    <span id="header-status-label" class="term-green" style="font-size:0.82rem; font-weight:700; text-transform:uppercase;">● Status: Operational</span>
+    <!-- Native Pi-hole Left Sidebar with ONLY 2 Items -->
+    <aside class="main-sidebar">
+        <section class="sidebar">
+            <div class="user-panel" style="padding: 12px 10px;">
+                <div class="pull-left image">
+                    <img class="logo-img" src="/admin/img/logo.svg" alt="Pi-hole logo" width="45" height="65">
                 </div>
-                <div class="card-body">
+                <div class="pull-left info" style="padding-left: 10px;">
+                    <p style="margin-bottom: 5px; font-weight: bold;">Pi-hole System</p>
+                    <span class="label label-success"><i class="fa fa-circle"></i> Active</span>
+                </div>
+            </div>
+            <ul class="sidebar-menu" data-widget="tree">
+                <li class="header text-uppercase">Navigation</li>
+                <li class="active">
+                    <a href="/">
+                        <i class="fa fa-fw menu-icon fa-heartbeat text-red"></i> <span>Internet Health</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="/admin/">
+                        <i class="fa fa-fw menu-icon fa-home"></i> <span>Pi-hole Admin</span>
+                    </a>
+                </li>
+            </ul>
+        </section>
+    </aside>
+
+    <!-- Main Content Area -->
+    <div class="content-wrapper" style="min-height: 900px; padding: 15px;">
+        <section class="content-header" style="padding-bottom: 15px;">
+            <h1>
+                Internet Health Diagnostics
+                <small style="color: #aaa;">Real-time DNS Chain & SLA Uptime</small>
+            </h1>
+        </section>
+
+        <section class="content">
+            <!-- Live DNS Chain Box -->
+            <div class="box box-success">
+                <div class="box-header with-border">
+                    <h3 class="box-title"><i class="fas fa-network-wired"></i> Live DNS Chain Diagnostics</h3>
+                    <div class="box-tools pull-right">
+                        <span id="header-status-label" class="label label-success" style="font-size: 0.9em;">● Status: Operational</span>
+                    </div>
+                </div>
+                <div class="box-body">
                     <div class="chain-flow">
-                        <!-- Client -->
-                        <div id="node-client" class="chain-node node-pass">
+                        <div id="node-client" class="chain-node">
                             <div class="node-name">CLIENT</div>
                             <div class="node-status-desc">Local Machine (Active)</div>
                         </div>
-
-                        <div id="arrow-1" class="connector-arrow arrow-active">&rarr;</div>
-
-                        <!-- Pi-hole -->
-                        <div id="node-pihole" class="chain-node node-pass">
+                        <div id="arrow-1" class="connector-arrow">&rarr;</div>
+                        <div id="node-pihole" class="chain-node">
                             <div class="node-name">Pi-hole</div>
                             <div id="node-pihole-desc" class="node-status-desc">127.0.0.1:53 (OK)</div>
                         </div>
-
-                        <div id="arrow-2" class="connector-arrow arrow-active">&rarr;</div>
-
-                        <!-- dnscrypt-proxy -->
-                        <div id="node-dnscrypt" class="chain-node node-pass">
+                        <div id="arrow-2" class="connector-arrow">&rarr;</div>
+                        <div id="node-dnscrypt" class="chain-node">
                             <div class="node-name">dnscrypt-proxy</div>
                             <div id="node-dnscrypt-desc" class="node-status-desc">127.0.0.1:5053 (OK)</div>
                         </div>
-
-                        <div id="arrow-3" class="connector-arrow arrow-active">&rarr;</div>
-
-                        <!-- Cloudflare Upstream -->
-                        <div id="node-cloudflare" class="chain-node node-pass">
+                        <div id="arrow-3" class="connector-arrow">&rarr;</div>
+                        <div id="node-cloudflare" class="chain-node">
                             <div class="node-name">Cloudflare (DoH)</div>
                             <div id="node-cloudflare-desc" class="node-status-desc">1.1.1.1:53 (OK)</div>
                         </div>
@@ -470,245 +140,206 @@
                 </div>
             </div>
 
-            <!-- 72-Hour Uptime Grid Box -->
-            <div class="card">
-                <div class="card-header">
-                    <span>Historical Uptime (Last 72 Hours)</span>
-                    <span id="grid-uptime-pct" class="term-green" style="font-weight:600;">100% SLA</span>
+            <!-- 72h Uptime Grid Box -->
+            <div class="box box-primary">
+                <div class="box-header with-border">
+                    <h3 class="box-title"><i class="fas fa-history"></i> Historical Uptime (Last 72 Hours)</h3>
+                    <div class="box-tools pull-right">
+                        <span id="grid-uptime-pct" class="label label-success" style="font-size: 0.9em;">100% SLA</span>
+                    </div>
                 </div>
-                <div class="card-body">
-                    <div style="display:flex; flex-direction:column; gap:0.6rem;">
-                        <div class="grid-row">
-                            <div class="row-label">Today</div>
-                            <div class="row-cells" id="row-today"></div>
-                        </div>
-                        <div class="grid-row">
-                            <div class="row-label">Yesterday</div>
-                            <div class="row-cells" id="row-yesterday"></div>
-                        </div>
-                        <div class="grid-row">
-                            <div class="row-label">2 Days Ago</div>
-                            <div class="row-cells" id="row-2daysago"></div>
-                        </div>
+                <div class="box-body">
+                    <div class="grid-row">
+                        <div class="row-label">Today</div>
+                        <div class="row-cells" id="row-today"></div>
+                    </div>
+                    <div class="grid-row">
+                        <div class="row-label">Yesterday</div>
+                        <div class="row-cells" id="row-yesterday"></div>
+                    </div>
+                    <div class="grid-row">
+                        <div class="row-label">2 Days Ago</div>
+                        <div class="row-cells" id="row-2daysago"></div>
                     </div>
                 </div>
             </div>
 
-            <!-- Stats Grid -->
-            <div class="stats-grid">
-                <!-- Latencies -->
-                <div class="card">
-                    <div class="card-header">Hop Latency Benchmark</div>
-                    <div class="card-body">
-                        <div class="stat-line">
-                            <span>Pi-hole DNS Hop</span>
-                            <span id="lat-pi" class="stat-value term-green">4ms</span>
+            <!-- Stat Boxes Row -->
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="box box-info">
+                        <div class="box-header with-border">
+                            <h3 class="box-title"><i class="fas fa-tachometer-alt"></i> Hop Latency Benchmark</h3>
                         </div>
-                        <div class="stat-line">
-                            <span>dnscrypt-proxy Hop</span>
-                            <span id="lat-dns" class="stat-value term-green">0ms</span>
-                        </div>
-                        <div class="stat-line">
-                            <span>Cloudflare Upstream</span>
-                            <span id="lat-cf" class="stat-value term-green">16ms</span>
+                        <div class="box-body">
+                            <table class="table table-bordered">
+                                <tr><td>Pi-hole DNS Hop</td><td><span id="lat-pi" class="label label-success">4ms</span></td></tr>
+                                <tr><td>dnscrypt-proxy Hop</td><td><span id="lat-dns" class="label label-success">0ms</span></td></tr>
+                                <tr><td>Cloudflare Upstream</td><td><span id="lat-cf" class="label label-success">16ms</span></td></tr>
+                            </table>
                         </div>
                     </div>
                 </div>
-
-                <!-- Interfaces -->
-                <div class="card">
-                    <div class="card-header">Network Interfaces</div>
-                    <div class="card-body">
-                        <div class="stat-line">
-                            <span>Wired Link (eth0)</span>
-                            <span id="if-eth" class="stat-value term-green">Online</span>
+                <div class="col-md-6">
+                    <div class="box box-info">
+                        <div class="box-header with-border">
+                            <h3 class="box-title"><i class="fas fa-plug"></i> Network Interfaces</h3>
                         </div>
-                        <div class="stat-line">
-                            <span>Wireless Link (wlan0)</span>
-                            <span id="if-wlan" class="stat-value term-green">Online</span>
-                        </div>
-                        <div class="stat-line">
-                            <span>Packet Loss (Ping)</span>
-                            <span id="if-loss" class="stat-value term-green">0.0%</span>
+                        <div class="box-body">
+                            <table class="table table-bordered">
+                                <tr><td>Wired Link (eth0)</td><td><span id="if-eth" class="label label-success">Online</span></td></tr>
+                                <tr><td>Wireless Link (wlan0)</td><td><span id="if-wlan" class="label label-success">Online</span></td></tr>
+                                <tr><td>Packet Loss (Ping)</td><td><span id="if-loss" class="label label-success">0.0%</span></td></tr>
+                            </table>
                         </div>
                     </div>
                 </div>
             </div>
 
             <!-- Incidents Box -->
-            <div class="card">
-                <div class="card-header">Recent Events & Outages Log</div>
-                <div class="card-body" id="incident-list">
-                    <div style="font-size:0.9rem; color:var(--text-muted); text-align:center; padding:0.5rem;">
+            <div class="box box-default">
+                <div class="box-header with-border">
+                    <h3 class="box-title"><i class="fas fa-exclamation-triangle"></i> Recent Events & Outages Log</h3>
+                </div>
+                <div class="box-body" id="incident-list">
+                    <div class="text-center text-muted" style="padding: 10px;">
                         No incidents logged in the last 72 hours.
                     </div>
                 </div>
             </div>
-
         </section>
-    </main>
+    </div>
+</div>
 
-    <script>
-        (function() {
-            function renderEmptyGrid() {
-                const rows = ['row-today', 'row-yesterday', 'row-2daysago'];
-                rows.forEach(rowId => {
-                    const container = document.getElementById(rowId);
-                    if (!container) return;
-                    container.innerHTML = '';
-                    for (let h = 0; h < 24; h++) {
-                        const cell = document.createElement('div');
-                        cell.className = 'hour-cell';
-                        container.appendChild(cell);
+<script src="/admin/vendor/jquery/jquery.min.js"></script>
+<script src="/admin/vendor/bootstrap/js/bootstrap.min.js"></script>
+<script src="/admin/vendor/adminLTE/adminlte.min.js"></script>
+
+<script>
+    (function() {
+        function renderEmptyGrid() {
+            const rows = ['row-today', 'row-yesterday', 'row-2daysago'];
+            rows.forEach(rowId => {
+                const container = document.getElementById(rowId);
+                if (!container) return;
+                container.innerHTML = '';
+                for (let h = 0; h < 24; h++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'hour-cell';
+                    container.appendChild(cell);
+                }
+            });
+        }
+
+        async function refreshDashboard() {
+            const paths = ['status.json', '/health/status.json', '/dev/shm/status.json'];
+            let data = null;
+            for (const path of paths) {
+                try {
+                    const res = await fetch(path + '?t=' + Date.now());
+                    if (res.ok) {
+                        data = await res.json();
+                        break;
                     }
+                } catch (e) {}
+            }
+            if (data) updateUI(data);
+        }
+
+        function updateUI(data) {
+            const activeStatus = data.status || 'Healthy';
+            const headerLabel = document.getElementById('header-status-label');
+            if (headerLabel) {
+                headerLabel.className = activeStatus === 'Healthy' ? 'label label-success' : 'label label-danger';
+                headerLabel.textContent = '● Status: ' + activeStatus;
+            }
+
+            let activeIface = null;
+            if (data.interfaces) {
+                if (data.interfaces.eth0 && data.interfaces.eth0.exists) activeIface = data.interfaces.eth0;
+                else if (data.interfaces.wlan0 && data.interfaces.wlan0.exists) activeIface = data.interfaces.wlan0;
+                
+                updateInterfaceRow('if-eth', data.interfaces.eth0);
+                updateInterfaceRow('if-wlan', data.interfaces.wlan0);
+                
+                if (activeIface) {
+                    const lossVal = activeIface.packet_loss !== undefined ? activeIface.packet_loss : 0.0;
+                    const lossEl = document.getElementById('if-loss');
+                    if (lossEl) {
+                        lossEl.textContent = lossVal.toFixed(1) + '%';
+                        lossEl.className = 'label ' + (lossVal > 0 ? 'label-danger' : 'label-success');
+                    }
+                }
+            }
+
+            if (activeIface && activeIface.connectivity === 'OK') {
+                updateNodeState('node-pihole', 'node-pihole-desc', activeIface.pihole, '127.0.0.1:53');
+                updateNodeState('node-dnscrypt', 'node-dnscrypt-desc', activeIface.dnscrypt, '127.0.0.1:5053');
+                updateNodeState('node-cloudflare', 'node-cloudflare-desc', activeIface.cloudflare, '1.1.1.1:53');
+                
+                updateLatencyText('lat-pi', activeIface.latency_pihole);
+                updateLatencyText('lat-dns', activeIface.latency_dnscrypt);
+                updateLatencyText('lat-cf', activeIface.latency_cloudflare);
+            }
+
+            if (data.history) renderHistoricalGrid(data.history);
+
+            if (data.sla_percentage !== undefined) {
+                const slaEl = document.getElementById('grid-uptime-pct');
+                if (slaEl) slaEl.textContent = data.sla_percentage.toFixed(2) + '% SLA';
+            }
+        }
+
+        function updateInterfaceRow(elementId, iface) {
+            const el = document.getElementById(elementId);
+            if (!el) return;
+            if (!iface || !iface.exists) { el.textContent = 'Inactive'; el.className = 'label label-default'; }
+            else if (iface.connectivity === 'DOWN') { el.textContent = 'Offline'; el.className = 'label label-danger'; }
+            else { el.textContent = 'Online'; el.className = 'label label-success'; }
+        }
+
+        function updateNodeState(nodeId, descId, isOk, portLabel) {
+            const nodeEl = document.getElementById(nodeId);
+            const descEl = document.getElementById(descId);
+            if (!nodeEl || !descEl) return;
+            nodeEl.className = isOk ? 'chain-node' : 'chain-node node-fail';
+            descEl.textContent = portLabel + (isOk ? ' (OK)' : ' (FAIL)');
+        }
+
+        function updateLatencyText(elId, val) {
+            const el = document.getElementById(elId);
+            if (!el) return;
+            if (val === undefined || val === -1 || val === null) {
+                el.textContent = 'TIMEOUT'; el.className = 'label label-danger';
+            } else {
+                el.textContent = val + 'ms'; el.className = 'label label-success';
+            }
+        }
+
+        function renderHistoricalGrid(history) {
+            const containerIds = { 'Today': 'row-today', 'Yesterday': 'row-yesterday', '2 Days Ago': 'row-2daysago' };
+            history.forEach(row => {
+                const containerId = containerIds[row.label];
+                if (!containerId) return;
+                const container = document.getElementById(containerId);
+                if (!container) return;
+                container.innerHTML = '';
+                row.hours.forEach(hourData => {
+                    const cell = document.createElement('div');
+                    let cellClass = 'hour-cell';
+                    if (hourData.status === 'WARNING') cellClass += ' hour-warning';
+                    else if (hourData.status === 'DANGER') cellClass += ' hour-danger';
+                    else if (hourData.status !== 'OK') cellClass += ' hour-inactive';
+                    cell.className = cellClass;
+                    container.appendChild(cell);
                 });
-            }
+            });
+        }
 
-            async function refreshDashboard() {
-                const paths = ['status.json', '/health/status.json', '/dev/shm/status.json'];
-                let data = null;
-                for (const path of paths) {
-                    try {
-                        const res = await fetch(path + '?t=' + Date.now());
-                        if (res.ok) {
-                            data = await res.json();
-                            break;
-                        }
-                    } catch (e) {}
-                }
-                if (data) {
-                    const errOverlay = document.getElementById('error-overlay');
-                    if (errOverlay) errOverlay.style.display = 'none';
-                    updateUI(data);
-                }
-            }
-
-            function updateUI(data) {
-                const activeStatus = data.status || 'Healthy';
-                const headerLabel = document.getElementById('header-status-label');
-                const navText = document.getElementById('nav-status-text');
-                const navDot = document.getElementById('nav-status-dot');
-
-                if (navText) navText.textContent = activeStatus;
-                if (navDot) navDot.style.backgroundColor = activeStatus === 'Healthy' ? 'var(--success)' : 'var(--danger)';
-
-                if (headerLabel) {
-                    if (activeStatus === 'Healthy') {
-                        headerLabel.className = 'term-green';
-                        headerLabel.textContent = '● Status: Operational';
-                    } else {
-                        headerLabel.className = 'term-red';
-                        headerLabel.textContent = '● Status: ' + activeStatus.toUpperCase();
-                    }
-                }
-
-                let activeIface = null;
-                if (data.interfaces) {
-                    if (data.interfaces.eth0 && data.interfaces.eth0.exists) {
-                        activeIface = data.interfaces.eth0;
-                    } else if (data.interfaces.wlan0 && data.interfaces.wlan0.exists) {
-                        activeIface = data.interfaces.wlan0;
-                    }
-                    
-                    updateInterfaceRow('if-eth', data.interfaces.eth0);
-                    updateInterfaceRow('if-wlan', data.interfaces.wlan0);
-                    
-                    if (activeIface) {
-                        const lossVal = activeIface.packet_loss !== undefined ? activeIface.packet_loss : 0.0;
-                        const lossEl = document.getElementById('if-loss');
-                        if (lossEl) {
-                            lossEl.textContent = lossVal.toFixed(1) + '%';
-                            lossEl.className = 'stat-value ' + (lossVal > 0 ? 'term-red' : 'term-green');
-                        }
-                    }
-                }
-
-                if (activeIface && activeIface.connectivity === 'OK') {
-                    updateNodeState('node-pihole', 'node-pihole-desc', activeIface.pihole, '127.0.0.1:53');
-                    updateNodeState('node-dnscrypt', 'node-dnscrypt-desc', activeIface.dnscrypt, '127.0.0.1:5053');
-                    updateNodeState('node-cloudflare', 'node-cloudflare-desc', activeIface.cloudflare, '1.1.1.1:53');
-                    
-                    updateLatencyText('lat-pi', activeIface.latency_pihole);
-                    updateLatencyText('lat-dns', activeIface.latency_dnscrypt);
-                    updateLatencyText('lat-cf', activeIface.latency_cloudflare);
-                }
-
-                if (data.history) {
-                    renderHistoricalGrid(data.history);
-                }
-
-                if (data.sla_percentage !== undefined) {
-                    const slaEl = document.getElementById('grid-uptime-pct');
-                    if (slaEl) {
-                        slaEl.textContent = data.sla_percentage.toFixed(2) + '% SLA';
-                    }
-                }
-            }
-
-            function updateInterfaceRow(elementId, iface) {
-                const el = document.getElementById(elementId);
-                if (!el) return;
-                if (!iface || !iface.exists) {
-                    el.textContent = 'Inactive';
-                    el.className = 'stat-value';
-                } else if (iface.connectivity === 'DOWN') {
-                    el.textContent = 'Offline';
-                    el.className = 'stat-value term-red';
-                } else {
-                    el.textContent = 'Online';
-                    el.className = 'stat-value term-green';
-                }
-            }
-
-            function updateNodeState(nodeId, descId, isOk, portLabel) {
-                const nodeEl = document.getElementById(nodeId);
-                const descEl = document.getElementById(descId);
-                if (!nodeEl || !descEl) return;
-                if (isOk) {
-                    nodeEl.className = 'chain-node node-pass';
-                    descEl.textContent = portLabel + ' (OK)';
-                } else {
-                    nodeEl.className = 'chain-node node-fail';
-                    descEl.textContent = portLabel + ' (FAIL)';
-                }
-            }
-
-            function updateLatencyText(elId, val) {
-                const el = document.getElementById(elId);
-                if (!el) return;
-                if (val === undefined || val === -1 || val === null) {
-                    el.textContent = 'TIMEOUT';
-                    el.className = 'stat-value term-red';
-                } else {
-                    el.textContent = val + 'ms';
-                    el.className = 'stat-value term-green';
-                }
-            }
-
-            function renderHistoricalGrid(history) {
-                const containerIds = { 'Today': 'row-today', 'Yesterday': 'row-yesterday', '2 Days Ago': 'row-2daysago' };
-                history.forEach(row => {
-                    const containerId = containerIds[row.label];
-                    if (!containerId) return;
-                    const container = document.getElementById(containerId);
-                    if (!container) return;
-                    container.innerHTML = '';
-                    row.hours.forEach(hourData => {
-                        const cell = document.createElement('div');
-                        let cellClass = 'hour-cell';
-                        if (hourData.status === 'WARNING') cellClass += ' hour-warning';
-                        else if (hourData.status === 'DANGER') cellClass += ' hour-danger';
-                        else if (hourData.status !== 'OK') cellClass += ' hour-inactive';
-                        cell.className = cellClass;
-                        container.appendChild(cell);
-                    });
-                });
-            }
-
-            renderEmptyGrid();
-            refreshDashboard();
-            setInterval(refreshDashboard, 30000);
-        })();
-    </script>
+        renderEmptyGrid();
+        refreshDashboard();
+        setInterval(refreshDashboard, 30000);
+    })();
+</script>
 </body>
 </html>
