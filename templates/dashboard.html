@@ -21,6 +21,7 @@
     <link rel="stylesheet" href="/admin/style/themes/default-light.css">
 
     <style>
+        html, body { height: 100%; }
         body { font-family: 'Source Sans Pro', sans-serif; }
         .main-header .logo { background-color: #367fa9 !important; color: #ffffff !important; font-size: 20px; font-weight: bold; }
         .main-header .navbar { background-color: #3c8dbc !important; min-height: 50px; }
@@ -241,8 +242,10 @@
     </footer>
 </div>
 
+<!-- jQuery is required before AdminLTE (AdminLTE uses $.fn for layout calculations) -->
+<script src="/admin/vendor/jquery/jquery.min.js"></script>
 <!-- AdminLTE layout engine (handles sidebar/content-wrapper height) -->
-<script src="/admin/vendor/adminLTE/AdminLTE.min.js"></script>
+<script src="/admin/vendor/adminLTE/adminlte.min.js"></script>
 <script src="/app.js"></script>
 </body>
 </html>
