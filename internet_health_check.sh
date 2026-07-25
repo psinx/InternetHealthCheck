@@ -243,7 +243,7 @@ generate_status_json() {
     local sla_pct
     sla_pct=$(calculate_sla_percentage)
 
-    # Extract recent incidents combining disk log and RAM history
+    # Extract recent incidents combining disk log and RAM history (strictly last 72 hours)
     local incidents_json
     incidents_json=$(extract_incidents_json)
 
@@ -346,7 +346,7 @@ for label in ["2 Days Ago", "Yesterday", "Today"]:
     result.append({"label": label, "hours": day_cells})
 
 print(json.dumps(result))
-' 2>/dev/null || echo '[{"label":"Today","hours":[]},{"label":"Yesterday","hours":[]},{"label":"2 Days Ago","hours":[]}]'
+' 2>/dev/null || echo '[{"label":"2 Days Ago","hours":[]},{"label":"Yesterday","hours":[]},{"label":"Today","hours":[]}]'
 }
 
 calculate_sla_percentage() {
@@ -371,13 +371,17 @@ print(f"{pct:.2f}")
 
 extract_incidents_json() {
     python3 -c '
-import os, json
+import os, json, time
+from datetime import datetime
+
 ram_file = os.environ.get("RAM_STATE_FILE", "/dev/shm/internet_health_history.txt")
 log_file = os.environ.get("LOG_FILE", "")
 incidents = []
 seen_events = set()
+now = time.time()
+max_age_seconds = 72 * 3600 # Strictly last 72 hours (259,200 seconds)
 
-# Parse persistent disk log first for reboot survival
+# Parse persistent disk log first for reboot survival (strictly last 72 hours)
 if log_file and os.path.exists(log_file):
     try:
         with open(log_file, "r") as f:
@@ -387,23 +391,29 @@ if log_file and os.path.exists(log_file):
                 parts = line.strip().split()
                 if len(parts) >= 5:
                     time_str = parts[0] + " " + parts[1]
-                    iface = parts[3].strip("[]")
-                    key = f"{time_str}_{iface}"
-                    if key not in seen_events:
-                        seen_events.add(key)
-                        incidents.append({
-                            "type": "outage",
-                            "badge": "Outage",
-                            "timestamp": f"{time_str} ({iface})",
-                            "description": "DOWN - CONNECTIVITY OUTAGE detected",
-                            "duration": ""
-                        })
-                        if len(incidents) >= 10:
-                            break
+                    try:
+                        dt = datetime.strptime(time_str, "%Y-%m-%d %H:%M:%S")
+                        ts = dt.timestamp()
+                        if (now - ts) <= max_age_seconds:
+                            iface = parts[3].strip("[]")
+                            key = f"{time_str}_{iface}"
+                            if key not in seen_events:
+                                seen_events.add(key)
+                                incidents.append({
+                                    "type": "outage",
+                                    "badge": "Outage",
+                                    "timestamp": f"{time_str} ({iface})",
+                                    "description": "DOWN - CONNECTIVITY OUTAGE detected",
+                                    "duration": ""
+                                })
+                                if len(incidents) >= 10:
+                                    break
+                    except Exception:
+                        pass
     except Exception:
         pass
 
-# Supplement from RAM file if available
+# Supplement from RAM file if available (strictly last 72 hours)
 if len(incidents) < 10 and os.path.exists(ram_file):
     try:
         with open(ram_file, "r") as f:
@@ -411,20 +421,25 @@ if len(incidents) < 10 and os.path.exists(ram_file):
         for line in reversed(lines):
             parts = line.strip().split("|")
             if len(parts) >= 4 and (parts[2] == "DOWN" or parts[3] == "false"):
-                ts_str = parts[1]
-                iface = parts[4] if len(parts) > 4 else "wlan0"
-                key = f"{ts_str}_{iface}"
-                if key not in seen_events:
-                    seen_events.add(key)
-                    incidents.append({
-                        "type": "outage",
-                        "badge": "Outage",
-                        "timestamp": f"{ts_str} ({iface})",
-                        "description": "DOWN - CONNECTIVITY OUTAGE detected",
-                        "duration": ""
-                    })
-                    if len(incidents) >= 10:
-                        break
+                try:
+                    ts = float(parts[0])
+                    if (now - ts) <= max_age_seconds:
+                        ts_str = parts[1]
+                        iface = parts[4] if len(parts) > 4 else "wlan0"
+                        key = f"{ts_str}_{iface}"
+                        if key not in seen_events:
+                            seen_events.add(key)
+                            incidents.append({
+                                "type": "outage",
+                                "badge": "Outage",
+                                "timestamp": f"{ts_str} ({iface})",
+                                "description": "DOWN - CONNECTIVITY OUTAGE detected",
+                                "duration": ""
+                            })
+                            if len(incidents) >= 10:
+                                break
+                except Exception:
+                    pass
     except Exception:
         pass
 
