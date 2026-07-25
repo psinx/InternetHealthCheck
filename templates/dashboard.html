@@ -23,6 +23,8 @@
     <style>
         body { font-family: 'Source Sans Pro', sans-serif; background-color: #ecf0f5; color: #333; }
         .wrapper { background-color: #ecf0f5; }
+        .main-header .logo { background-color: #367fa9 !important; color: #ffffff !important; }
+        .main-header .navbar { background-color: #3c8dbc !important; min-height: 50px; }
         .content-wrapper { background-color: #ecf0f5; margin-left: 230px; min-height: 100vh; padding: 20px; }
         @media (max-width: 767px) { .content-wrapper { margin-left: 0; } }
         
@@ -72,7 +74,7 @@
         .table-bordered > tbody > tr > td { border: 1px solid #f4f4f4; color: #444; }
     </style>
 </head>
-<body class="hold-transition sidebar-mini layout-boxed">
+<body class="hold-transition sidebar-mini skin-blue layout-boxed">
 <div class="wrapper">
 
     <!-- Header Navbar -->
@@ -81,7 +83,7 @@
             <span class="logo-mini">P<strong>h</strong></span>
             <span class="logo-lg">Pi-<strong>hole</strong></span>
         </a>
-        <nav class="navbar navbar-static-top">
+        <nav class="navbar navbar-static-top" role="navigation">
         </nav>
     </header>
 
