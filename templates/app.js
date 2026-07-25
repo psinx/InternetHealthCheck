@@ -9,6 +9,51 @@
         return start + ' - ' + end;
     }
 
+    // Floating Tooltip Element
+    let tooltipEl = null;
+
+    function getOrCreateTooltip() {
+        if (!tooltipEl) {
+            tooltipEl = document.createElement('div');
+            tooltipEl.id = 'grid-custom-tooltip';
+            tooltipEl.style.cssText = 'position: absolute; display: none; background: #222d32; color: #fff; padding: 6px 12px; border-radius: 4px; font-size: 12px; font-weight: 600; box-shadow: 0 4px 10px rgba(0,0,0,0.3); z-index: 9999; pointer-events: none; white-space: nowrap; transition: opacity 0.15s ease-in-out; border: 1px solid #4b646f;';
+            document.body.appendChild(tooltipEl);
+        }
+        return tooltipEl;
+    }
+
+    function attachTooltipEvents(cell, text) {
+        cell.setAttribute('title', text); // Fallback native title
+        cell.setAttribute('data-tooltip-text', text);
+
+        cell.addEventListener('mouseenter', function(e) {
+            const tip = getOrCreateTooltip();
+            tip.textContent = text;
+            tip.style.display = 'block';
+            tip.style.opacity = '1';
+            positionTooltip(e);
+        });
+
+        cell.addEventListener('mousemove', function(e) {
+            positionTooltip(e);
+        });
+
+        cell.addEventListener('mouseleave', function() {
+            if (tooltipEl) {
+                tooltipEl.style.opacity = '0';
+                tooltipEl.style.display = 'none';
+            }
+        });
+    }
+
+    function positionTooltip(e) {
+        if (!tooltipEl) return;
+        const x = e.pageX;
+        const y = e.pageY - 38;
+        tooltipEl.style.left = (x - (tooltipEl.offsetWidth / 2)) + 'px';
+        tooltipEl.style.top = y + 'px';
+    }
+
     function renderEmptyGrid() {
         const rows = ['row-today', 'row-yesterday', 'row-2daysago'];
         const labels = { 'row-today': 'Today', 'row-yesterday': 'Yesterday', 'row-2daysago': '2 Days Ago' };
@@ -20,7 +65,8 @@
                 const cell = document.createElement('div');
                 cell.className = 'hour-cell';
                 const timeRange = formatHourRange(h);
-                cell.setAttribute('title', labels[rowId] + ' ' + timeRange + ' (100% Operational)');
+                const text = labels[rowId] + ' ' + timeRange + ' (100% Operational)';
+                attachTooltipEvents(cell, text);
                 container.appendChild(cell);
             }
         });
@@ -133,7 +179,8 @@
                 if (hourData.earliest_issue) {
                     statusDesc += ' — First detected at ' + hourData.earliest_issue;
                 }
-                cell.setAttribute('title', row.label + ' ' + timeRange + ' (' + statusDesc + ')');
+                const tooltipText = row.label + ' ' + timeRange + ' (' + statusDesc + ')';
+                attachTooltipEvents(cell, tooltipText);
                 
                 container.appendChild(cell);
             });
