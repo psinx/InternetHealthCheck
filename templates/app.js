@@ -23,9 +23,16 @@
     }
 
     function renderMiniChainHtml(hourData, dayLabel, timeRange) {
-        const piOk = hourData.pihole !== undefined ? hourData.pihole : (hourData.status === 'OK');
-        const dnsOk = hourData.dnscrypt !== undefined ? hourData.dnscrypt : (hourData.status === 'OK');
-        const cfOk = hourData.cloudflare !== undefined ? hourData.cloudflare : (hourData.status === 'OK');
+        let piOk = hourData.pihole !== undefined ? hourData.pihole : (hourData.status === 'OK');
+        let dnsOk = hourData.dnscrypt !== undefined ? hourData.dnscrypt : (hourData.status === 'OK');
+        let cfOk = hourData.cloudflare !== undefined ? hourData.cloudflare : (hourData.status === 'OK');
+
+        // Safety fallback: if status is DANGER and node states were all true, mark all false for general outage
+        if (hourData.status === 'DANGER' && piOk && dnsOk && cfOk) {
+            piOk = false;
+            dnsOk = false;
+            cfOk = false;
+        }
 
         const badgeClass = hourData.status === 'OK' ? 'label label-success' : (hourData.status === 'DANGER' ? 'label label-danger' : (hourData.status === 'WARNING' ? 'label label-warning' : 'label label-default'));
         const badgeText = hourData.status === 'OK' ? '100% Operational' : (hourData.status === 'DANGER' ? 'Outage' : (hourData.status === 'INACTIVE' ? 'Pending' : hourData.status));

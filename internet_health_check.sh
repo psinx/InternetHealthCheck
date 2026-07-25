@@ -282,9 +282,9 @@ log_file = os.environ.get("LOG_FILE", "")
 
 hours_status = {"Today": ["OK"]*24, "Yesterday": ["OK"]*24, "2 Days Ago": ["OK"]*24}
 hours_earliest = {"Today": [""]*24, "Yesterday": [""]*24, "2 Days Ago": [""]*24}
-hours_nodes = {"Today": [{"pi": True, "dns": True, "cf": True}]*24,
-               "Yesterday": [{"pi": True, "dns": True, "cf": True}]*24,
-               "2 Days Ago": [{"pi": True, "dns": True, "cf": True}]*24}
+hours_nodes = {"Today": [{"pi": True, "dns": True, "cf": True} for _ in range(24)],
+               "Yesterday": [{"pi": True, "dns": True, "cf": True} for _ in range(24)],
+               "2 Days Ago": [{"pi": True, "dns": True, "cf": True} for _ in range(24)]}
 
 now_dt = datetime.now()
 today_date = now_dt.date()
@@ -313,20 +313,20 @@ if os.path.exists(ram_file):
                     if 0 <= days_diff < 3:
                         day_label = ["Today", "Yesterday", "2 Days Ago"][days_diff]
                         hour_idx = dt.hour
-                        hours_nodes[day_label][hour_idx] = {"pi": pihole_ok, "dns": dnscrypt_ok, "cf": cloudflare_ok}
                         if conn == "DOWN" or dns == "false":
                             hours_status[day_label][hour_idx] = "DANGER"
+                            hours_nodes[day_label][hour_idx] = {"pi": pihole_ok, "dns": dnscrypt_ok, "cf": cloudflare_ok}
                             if not hours_earliest[day_label][hour_idx]:
                                 hours_earliest[day_label][hour_idx] = dt.strftime("%Y-%m-%d %H:%M:%S")
                 except Exception:
                     pass
 
-# 2. Read Persistent Disk Log (overrides RAM entries for outages)
+# 2. Read Persistent Disk Log (overrides RAM entries for outages with node failure breakdown)
 if log_file and os.path.exists(log_file):
     try:
         with open(log_file, "r") as f:
             for line in f:
-                if "[INTERNET-HEALTH-CHECK]" in line and "DOWN" in line:
+                if "[INTERNET-HEALTH-CHECK]" in line:
                     parts = line.strip().split()
                     if len(parts) >= 2:
                         time_str = parts[0] + " " + parts[1]
@@ -336,9 +336,19 @@ if log_file and os.path.exists(log_file):
                             if 0 <= days_diff < 3:
                                 day_label = ["Today", "Yesterday", "2 Days Ago"][days_diff]
                                 hour_idx = dt.hour
-                                hours_status[day_label][hour_idx] = "DANGER"
-                                if not hours_earliest[day_label][hour_idx]:
-                                    hours_earliest[day_label][hour_idx] = time_str
+                                if "DOWN" in line or "Fail" in line:
+                                    hours_status[day_label][hour_idx] = "DANGER"
+                                    if not hours_earliest[day_label][hour_idx]:
+                                        hours_earliest[day_label][hour_idx] = time_str
+                                    
+                                    if "Fail via Pi-hole" in line:
+                                        hours_nodes[day_label][hour_idx]["pi"] = False
+                                    elif "Fail via dnscrypt" in line:
+                                        hours_nodes[day_label][hour_idx]["dns"] = False
+                                    elif "Fail via Cloudflare" in line:
+                                        hours_nodes[day_label][hour_idx]["cf"] = False
+                                    elif "CONNECTIVITY OUTAGE" in line or "Fail during Ping" in line:
+                                        hours_nodes[day_label][hour_idx] = {"pi": False, "dns": False, "cf": False}
                         except Exception:
                             pass
     except Exception:
@@ -351,6 +361,9 @@ for label in ["2 Days Ago", "Yesterday", "Today"]:
         st = hours_status[label][h]
         earliest = hours_earliest[label][h]
         nodes = hours_nodes[label][h]
+        # If cell is marked DANGER/outage but nodes were unparsed, mark all nodes as failed
+        if st == "DANGER" and nodes["pi"] and nodes["dns"] and nodes["cf"]:
+            nodes = {"pi": False, "dns": False, "cf": False}
         day_cells.append({
             "hour": h,
             "status": st,
