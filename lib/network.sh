@@ -16,7 +16,7 @@ get_interface_ip() {
     fi
 }
 
-# Detect upstream DNS resolver IP from dnscrypt-proxy configuration or CLI parameter
+# Detect upstream DNS resolver IP from dnscrypt-proxy configuration and resolver cache
 detect_upstream_dns() {
     local override_ip=${1:-""}
     if [[ -n "$override_ip" ]]; then
@@ -25,9 +25,32 @@ detect_upstream_dns() {
     fi
     
     local config_file="/etc/dnscrypt-proxy/dnscrypt-proxy.toml"
+    local cache_file="/var/cache/dnscrypt-proxy/public-resolvers.md"
+    
     if [[ -f "$config_file" ]]; then
         local server_names
         server_names=$(grep -i '^server_names' "$config_file" 2>/dev/null | tr -d "'\"[] ")
+        
+        # Check resolver cache file if available
+        if [[ -n "$server_names" && -f "$cache_file" ]]; then
+            local first_server
+            first_server=$(echo "$server_names" | cut -d',' -f1)
+            
+            local stamp
+            stamp=$(sed -n "/^## ${first_server}\$/,/^## /p" "$cache_file" 2>/dev/null | grep '^sdns://' | head -n1)
+            
+            if [[ "$stamp" =~ 1\.0\.0\.3 || "$stamp" =~ 1\.1\.1\.3 ]]; then
+                echo "1.1.1.3"
+                return 0
+            elif [[ "$stamp" =~ 1\.0\.0\.2 || "$stamp" =~ 1\.1\.1\.2 ]]; then
+                echo "1.1.1.2"
+                return 0
+            elif [[ "$stamp" =~ 1\.0\.0\.1 || "$stamp" =~ 1\.1\.1\.1 ]]; then
+                echo "1.1.1.1"
+                return 0
+            fi
+        fi
+
         if [[ "$server_names" =~ "family" || "$server_names" =~ "1.1.1.3" ]]; then
             echo "1.1.1.3"
             return 0
