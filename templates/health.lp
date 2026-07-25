@@ -1,5 +1,5 @@
 <?
-mg.include('header.lp','r')
+mg.include("scripts/lua/header.lp","r")
 ?>
 </head>
 <body class="<?=theme.name?> hold-transition sidebar-mini <? if pihole.boxedlayout() then ?>layout-boxed<? end ?>">
