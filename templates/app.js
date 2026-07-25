@@ -55,7 +55,7 @@
     }
 
     function renderEmptyGrid() {
-        const rows = ['row-today', 'row-yesterday', 'row-2daysago'];
+        const rows = ['row-2daysago', 'row-yesterday', 'row-today'];
         const labels = { 'row-today': 'Today', 'row-yesterday': 'Yesterday', 'row-2daysago': '2 Days Ago' };
         rows.forEach(rowId => {
             const container = document.getElementById(rowId);
@@ -126,6 +126,8 @@
 
         if (data.history) renderHistoricalGrid(data.history);
 
+        if (data.incidents) renderIncidentsList(data.incidents);
+
         if (data.sla_percentage !== undefined) {
             const slaEl = document.getElementById('grid-uptime-pct');
             if (slaEl) slaEl.textContent = data.sla_percentage.toFixed(2) + '% SLA';
@@ -171,11 +173,11 @@
                 let cellClass = 'hour-cell';
                 if (hourData.status === 'WARNING') cellClass += ' hour-warning';
                 else if (hourData.status === 'DANGER') cellClass += ' hour-danger';
-                else if (hourData.status !== 'OK') cellClass += ' hour-inactive';
+                else if (hourData.status === 'INACTIVE') cellClass += ' hour-inactive';
                 cell.className = cellClass;
                 
                 const timeRange = formatHourRange(hourData.hour);
-                let statusDesc = hourData.status === 'OK' ? '100% Operational' : (hourData.status === 'DANGER' ? 'Outage Detected' : hourData.status);
+                let statusDesc = hourData.status === 'OK' ? '100% Operational' : (hourData.status === 'DANGER' ? 'Outage Detected' : (hourData.status === 'INACTIVE' ? 'Pending / Future Hour' : hourData.status));
                 if (hourData.earliest_issue) {
                     statusDesc += ' — First detected at ' + hourData.earliest_issue;
                 }
@@ -184,6 +186,25 @@
                 
                 container.appendChild(cell);
             });
+        });
+    }
+
+    function renderIncidentsList(incidents) {
+        const container = document.getElementById('incident-list');
+        if (!container) return;
+        if (!incidents || incidents.length === 0) {
+            container.innerHTML = '<div class="text-center text-muted" style="padding: 10px; color: #777;">No incidents logged in the last 72 hours.</div>';
+            return;
+        }
+        container.innerHTML = '';
+        incidents.forEach(item => {
+            const row = document.createElement('div');
+            row.style.cssText = 'padding: 8px 10px; border-bottom: 1px dashed #eee; font-size: 0.95em;';
+            const badgeClass = item.badge === 'Outage' ? 'label label-danger' : 'label label-warning';
+            row.innerHTML = '<span class="' + badgeClass + '" style="margin-right: 8px;">' + item.badge + '</span>' +
+                            '<strong style="color: #333;">' + item.timestamp + '</strong> — ' +
+                            '<span style="color: #555;">' + item.description + '</span>';
+            container.appendChild(row);
         });
     }
 
