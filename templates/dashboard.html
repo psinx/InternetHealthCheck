@@ -21,12 +21,13 @@
     <link rel="stylesheet" href="/admin/style/themes/default-light.css">
 
     <style>
-        body { font-family: 'Source Sans Pro', sans-serif; background-color: #ecf0f5; color: #333; }
-        .wrapper { background-color: #ecf0f5; }
+        body { font-family: 'Source Sans Pro', sans-serif; background-color: #222d32; color: #333; margin: 0; }
+        .wrapper { background-color: #222d32; min-height: 100vh; position: relative; }
         .main-header .logo { background-color: #367fa9 !important; color: #ffffff !important; font-size: 20px; font-weight: bold; }
         .main-header .navbar { background-color: #3c8dbc !important; min-height: 50px; }
+        .main-sidebar { background-color: #222d32 !important; min-height: 100%; position: absolute; top: 0; bottom: 0; left: 0; width: 230px; z-index: 810; padding-top: 50px; }
         .content-wrapper { background-color: #ecf0f5; margin-left: 230px; min-height: 100vh; padding: 20px; }
-        @media (max-width: 767px) { .content-wrapper { margin-left: 0; } }
+        @media (max-width: 767px) { .content-wrapper { margin-left: 0; } .main-sidebar { position: relative; min-height: auto; } }
         
         /* 72h Uptime Grid Styling with Time Hover Tooltips */
         .grid-row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
@@ -153,7 +154,7 @@
                 </div>
             </div>
 
-            <!-- 72h Uptime Grid Box in Chronological Order (2 Days Ago -> Yesterday -> Today) -->
+            <!-- 72h Uptime Grid Box Chronologically Ordered (2 Days Ago -> Yesterday -> Today) -->
             <div class="box box-primary">
                 <div class="box-header with-border">
                     <h3 class="box-title"><i class="fas fa-history"></i> Historical Uptime (Last 72 Hours)</h3>
