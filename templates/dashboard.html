@@ -129,7 +129,7 @@
                         <div id="arrow-3" class="connector-arrow">&rarr;</div>
                         <div id="node-cloudflare" class="chain-node">
                             <div class="node-name">Cloudflare (DoH)</div>
-                            <div id="node-cloudflare-desc" class="node-status-desc">1.1.1.1:53 (OK)</div>
+                            <div id="node-cloudflare-desc" class="node-status-desc">1.1.1.3:53 (OK)</div>
                         </div>
                     </div>
                 </div>
@@ -264,9 +264,10 @@
             }
 
             if (activeIface && activeIface.connectivity === 'OK') {
+                const upstreamIp = (activeIface && activeIface.upstream_ip) ? activeIface.upstream_ip : '1.1.1.3';
                 updateNodeState('node-pihole', 'node-pihole-desc', activeIface.pihole, '127.0.0.1:53');
                 updateNodeState('node-dnscrypt', 'node-dnscrypt-desc', activeIface.dnscrypt, '127.0.0.1:5053');
-                updateNodeState('node-cloudflare', 'node-cloudflare-desc', activeIface.cloudflare, '1.1.1.1:53');
+                updateNodeState('node-cloudflare', 'node-cloudflare-desc', activeIface.cloudflare, upstreamIp + ':53');
                 
                 updateLatencyText('lat-pi', activeIface.latency_pihole);
                 updateLatencyText('lat-dns', activeIface.latency_dnscrypt);
