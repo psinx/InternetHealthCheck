@@ -199,6 +199,7 @@ main() {
       "pihole": $PIHOLE_OK,
       "dnscrypt": $DNSCRYPT_OK,
       "cloudflare": $CLOUDFLARE_OK,
+      "upstream_ip": "$detected_upstream",
       "latency_pihole": $PIHOLE_LATENCY,
       "latency_dnscrypt": $DNSCRYPT_LATENCY,
       "latency_cloudflare": $CLOUDFLARE_LATENCY,
