@@ -272,16 +272,24 @@ EOF
 }
 
 build_72h_history_json() {
-    # Combine RAM history file and persistent disk log for reboot survival & outage overriding
+    # Combine RAM history file and persistent disk log for exact local clock hour mapping
     python3 -c '
 import os, json, time
+from datetime import datetime
 
 ram_file = os.environ.get("RAM_STATE_FILE", "/dev/shm/internet_health_history.txt")
 log_file = os.environ.get("LOG_FILE", "")
 
 hours_status = {"Today": ["OK"]*24, "Yesterday": ["OK"]*24, "2 Days Ago": ["OK"]*24}
 hours_earliest = {"Today": [""]*24, "Yesterday": [""]*24, "2 Days Ago": [""]*24}
-now = time.time()
+
+now_dt = datetime.now()
+today_date = now_dt.date()
+current_hour = now_dt.hour
+
+# Mark future hours today as INACTIVE (gray)
+for h in range(current_hour + 1, 24):
+    hours_status["Today"][h] = "INACTIVE"
 
 # 1. Read RAM history file
 if os.path.exists(ram_file):
@@ -291,22 +299,21 @@ if os.path.exists(ram_file):
             if len(parts) >= 4:
                 try:
                     ts = float(parts[0])
-                    time_str = parts[1]
+                    dt = datetime.fromtimestamp(ts)
                     conn = parts[2]
                     dns = parts[3]
-                    age_hours = int((now - ts) / 3600)
-                    if age_hours < 72:
-                        day_idx = age_hours // 24
-                        hour_idx = (23 - (age_hours % 24))
-                        day_label = ["Today", "Yesterday", "2 Days Ago"][day_idx]
+                    days_diff = (today_date - dt.date()).days
+                    if 0 <= days_diff < 3:
+                        day_label = ["Today", "Yesterday", "2 Days Ago"][days_diff]
+                        hour_idx = dt.hour
                         if conn == "DOWN" or dns == "false":
                             hours_status[day_label][hour_idx] = "DANGER"
                             if not hours_earliest[day_label][hour_idx]:
-                                hours_earliest[day_label][hour_idx] = time_str
+                                hours_earliest[day_label][hour_idx] = dt.strftime("%Y-%m-%d %H:%M:%S")
                 except Exception:
                     pass
 
-# 2. Read Persistent Disk Log (Disk entries override RAM entries for outages across reboots)
+# 2. Read Persistent Disk Log (overrides RAM entries for outages)
 if log_file and os.path.exists(log_file):
     try:
         with open(log_file, "r") as f:
@@ -316,13 +323,11 @@ if log_file and os.path.exists(log_file):
                     if len(parts) >= 2:
                         time_str = parts[0] + " " + parts[1]
                         try:
-                            struct_time = time.strptime(time_str, "%Y-%m-%d %H:%M:%S")
-                            ts = time.mktime(struct_time)
-                            age_hours = int((now - ts) / 3600)
-                            if age_hours < 72:
-                                day_idx = age_hours // 24
-                                hour_idx = (23 - (age_hours % 24))
-                                day_label = ["Today", "Yesterday", "2 Days Ago"][day_idx]
+                            dt = datetime.strptime(time_str, "%Y-%m-%d %H:%M:%S")
+                            days_diff = (today_date - dt.date()).days
+                            if 0 <= days_diff < 3:
+                                day_label = ["Today", "Yesterday", "2 Days Ago"][days_diff]
+                                hour_idx = dt.hour
                                 hours_status[day_label][hour_idx] = "DANGER"
                                 if not hours_earliest[day_label][hour_idx]:
                                     hours_earliest[day_label][hour_idx] = time_str
