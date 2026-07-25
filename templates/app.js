@@ -129,7 +129,10 @@
                 cell.className = cellClass;
                 
                 const timeRange = formatHourRange(hourData.hour);
-                const statusDesc = hourData.status === 'OK' ? '100% Operational' : (hourData.status === 'DANGER' ? 'Outage Detected' : hourData.status);
+                let statusDesc = hourData.status === 'OK' ? '100% Operational' : (hourData.status === 'DANGER' ? 'Outage Detected' : hourData.status);
+                if (hourData.earliest_issue) {
+                    statusDesc += ' — First detected at ' + hourData.earliest_issue;
+                }
                 cell.setAttribute('title', row.label + ' ' + timeRange + ' (' + statusDesc + ')');
                 
                 container.appendChild(cell);

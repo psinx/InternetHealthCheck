@@ -271,13 +271,13 @@ EOF
 }
 
 build_72h_history_json() {
-    # Generate 72 hour array grouped by Today, Yesterday, 2 Days Ago
+    # Generate 72 hour array grouped by Today, Yesterday, 2 Days Ago with earliest issue timestamps
     python3 -c '
 import os, json, time
 
 ram_file = os.environ.get("RAM_STATE_FILE", "/dev/shm/internet_health_history.txt")
-hours_data = {"Today": [100]*24, "Yesterday": [100]*24, "2 Days Ago": [100]*24}
 hours_status = {"Today": ["OK"]*24, "Yesterday": ["OK"]*24, "2 Days Ago": ["OK"]*24}
+hours_earliest = {"Today": [""]*24, "Yesterday": [""]*24, "2 Days Ago": [""]*24}
 
 if os.path.exists(ram_file):
     now = time.time()
@@ -287,6 +287,7 @@ if os.path.exists(ram_file):
             if len(parts) >= 4:
                 try:
                     ts = float(parts[0])
+                    time_str = parts[1]
                     conn = parts[2]
                     dns = parts[3]
                     age_hours = int((now - ts) / 3600)
@@ -296,6 +297,8 @@ if os.path.exists(ram_file):
                         day_label = ["Today", "Yesterday", "2 Days Ago"][day_idx]
                         if conn == "DOWN" or dns == "false":
                             hours_status[day_label][hour_idx] = "DANGER"
+                            if not hours_earliest[day_label][hour_idx]:
+                                hours_earliest[day_label][hour_idx] = time_str
                 except Exception:
                     pass
 
@@ -304,7 +307,8 @@ for label in ["2 Days Ago", "Yesterday", "Today"]:
     day_cells = []
     for h in range(24):
         st = hours_status[label][h]
-        day_cells.append({"hour": h, "status": st, "uptime": 100 if st == "OK" else 0})
+        earliest = hours_earliest[label][h]
+        day_cells.append({"hour": h, "status": st, "uptime": 100 if st == "OK" else 0, "earliest_issue": earliest})
     result.append({"label": label, "hours": day_cells})
 
 print(json.dumps(result))
