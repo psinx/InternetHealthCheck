@@ -16,6 +16,31 @@ get_interface_ip() {
     fi
 }
 
+# Detect upstream DNS resolver IP from dnscrypt-proxy configuration or CLI parameter
+detect_upstream_dns() {
+    local override_ip=${1:-""}
+    if [[ -n "$override_ip" ]]; then
+        echo "$override_ip"
+        return 0
+    fi
+    
+    local config_file="/etc/dnscrypt-proxy/dnscrypt-proxy.toml"
+    if [[ -f "$config_file" ]]; then
+        local server_names
+        server_names=$(grep -i '^server_names' "$config_file" 2>/dev/null | tr -d "'\"[] ")
+        if [[ "$server_names" =~ "family" || "$server_names" =~ "1.1.1.3" ]]; then
+            echo "1.1.1.3"
+            return 0
+        elif [[ "$server_names" =~ "security" || "$server_names" =~ "1.1.1.2" ]]; then
+            echo "1.1.1.2"
+            return 0
+        fi
+    fi
+    
+    # Fallback to default Cloudflare IP
+    echo "1.1.1.1"
+}
+
 # Perform ICMP ping connectivity check, parsing packet loss and average latency
 check_connectivity() {
     local interface=$1
@@ -82,6 +107,10 @@ check_dns_chain() {
     CLOUDFLARE_OK=false
     CLOUDFLARE_LATENCY=-1
     
+    # Detect configured upstream DNS server (e.g. 1.1.1.3 or 1.1.1.1)
+    local upstream_ip
+    upstream_ip=$(detect_upstream_dns "${UPSTREAM_DNS:-}")
+    
     # 1. Pi-hole Check (127.0.0.1 on port 53)
     if check_dns "$interface" "127.0.0.1" "$PIHOLE_PORT" "$local_ip"; then
         PIHOLE_OK="$DNS_SUCCESS"
@@ -94,8 +123,8 @@ check_dns_chain() {
         DNSCRYPT_LATENCY="$DNS_LATENCY"
     fi
     
-    # 3. Cloudflare Check (1.1.1.1 on port 53)
-    if check_dns "$interface" "1.1.1.1" "53" "$local_ip"; then
+    # 3. Configured Upstream Check (e.g. 1.1.1.3 or 1.1.1.1 on port 53)
+    if check_dns "$interface" "$upstream_ip" "53" "$local_ip"; then
         CLOUDFLARE_OK="$DNS_SUCCESS"
         CLOUDFLARE_LATENCY="$DNS_LATENCY"
     fi
@@ -108,7 +137,7 @@ check_dns_chain() {
         
         # Log error block
         log "[$interface] DOWN"
-        log_dns_results "$interface" "$PIHOLE_OK" "$DNSCRYPT_OK" "$CLOUDFLARE_OK"
+        log_dns_results "$interface" "$PIHOLE_OK" "$DNSCRYPT_OK" "$CLOUDFLARE_OK" "$upstream_ip"
         
         local failure_point
         failure_point=$(determine_failure_point "$PIHOLE_OK" "$DNSCRYPT_OK" "$CLOUDFLARE_OK")
@@ -120,13 +149,16 @@ check_dns_chain() {
 }
 
 log_dns_results() {
-    local interface=$1 pihole_ok=$2 dnscrypt_ok=$3 cloudflare_ok=$4
+    local interface=$1 pihole_ok=$2 dnscrypt_ok=$3 cloudflare_ok=$4 upstream_ip=${5:-"1.1.1.1"}
+    local upstream_name="Cloudflare"
+    [[ "$upstream_ip" != 1.1.1.* && "$upstream_ip" != 1.0.0.* ]] && upstream_name="Upstream"
+
     [[ "$pihole_ok" == "false" ]] && log "[$interface] Test: Fail via Pi-hole (127.0.0.1:$PIHOLE_PORT)"
     [[ "$pihole_ok" == "true" ]]  && log "[$interface] Test: Pass via Pi-hole (127.0.0.1:$PIHOLE_PORT)"
     [[ "$dnscrypt_ok" == "false" ]] && log "[$interface] Test: Fail via dnscrypt-proxy (127.0.0.1:${DNSCRYPT_PORT})"
     [[ "$dnscrypt_ok" == "true" ]]  && log "[$interface] Test: Pass via dnscrypt-proxy (127.0.0.1:${DNSCRYPT_PORT})"
-    [[ "$cloudflare_ok" == "false" ]] && log "[$interface] Test: Fail via Cloudflare public (1.1.1.1:53)"
-    [[ "$cloudflare_ok" == "true" ]]  && log "[$interface] Test: Pass via Cloudflare public (1.1.1.1:53)"
+    [[ "$cloudflare_ok" == "false" ]] && log "[$interface] Test: Fail via $upstream_name ($upstream_ip:53)"
+    [[ "$cloudflare_ok" == "true" ]]  && log "[$interface] Test: Pass via $upstream_name ($upstream_ip:53)"
 }
 
 determine_failure_point() {
