@@ -478,12 +478,12 @@
             <span class="brand-name">Pi-hole</span>
         </div>
         <ul class="sidebar-menu">
-            <li class="menu-item"><a href="#dashboard"><span class="menu-icon">📊</span> Dashboard</a></li>
-            <li class="menu-item"><a href="#querylog"><span class="menu-icon">📋</span> Query Log</a></li>
-            <li class="menu-item active"><a href="#health"><span class="menu-icon">⚡</span> Internet Health</a></li>
-            <li class="menu-item"><a href="#gravity"><span class="menu-icon">🛡️</span> Gravity</a></li>
-            <li class="menu-item"><a href="#localdns"><span class="menu-icon">🌐</span> Local DNS</a></li>
-            <li class="menu-item"><a href="#settings"><span class="menu-icon">⚙</span> Settings</a></li>
+            <li class="menu-item active"><a href="/health/"><span class="menu-icon">⚡</span> Internet Health</a></li>
+            <li class="menu-item"><a href="/admin/"><span class="menu-icon">📊</span> Pi-hole Admin</a></li>
+            <li class="menu-item"><a href="/admin/#querylog"><span class="menu-icon">📋</span> Query Log</a></li>
+            <li class="menu-item"><a href="/admin/#gravity"><span class="menu-icon">🛡️</span> Gravity</a></li>
+            <li class="menu-item"><a href="/admin/#localdns"><span class="menu-icon">🌐</span> Local DNS</a></li>
+            <li class="menu-item"><a href="/admin/#settings"><span class="menu-icon">⚙</span> Settings</a></li>
         </ul>
     </aside>
 
@@ -494,12 +494,12 @@
         <nav class="navbar">
             <div class="nav-title">Internet Health Diagnostics</div>
             <div class="nav-user">
+                <a href="/admin/" style="background: #3b82f6; color: white; padding: 0.45rem 0.9rem; border-radius: 6px; text-decoration: none; font-weight: 600; font-size: 0.85rem; display: inline-flex; align-items: center; gap: 0.4rem; transition: background 0.2s ease;">
+                    <span>Pi-hole Admin Dashboard</span> ➔
+                </a>
                 <div class="nav-user-item">
                     <span id="nav-status-dot" class="status-dot"></span>
                     <span id="nav-status-text" style="color:white; font-weight:600;">Loading...</span>
-                </div>
-                <div class="nav-user-item">
-                    <span>Admin</span>
                 </div>
             </div>
         </nav>
