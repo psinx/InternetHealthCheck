@@ -166,7 +166,17 @@
 
         if (data.sla_percentage !== undefined) {
             const slaEl = document.getElementById('grid-uptime-pct');
-            if (slaEl) slaEl.textContent = data.sla_percentage.toFixed(2) + '% SLA';
+            if (slaEl) {
+                const val = Number(data.sla_percentage);
+                slaEl.textContent = '● SLA: ' + val.toFixed(2) + '%';
+                if (val < 95.0) {
+                    slaEl.className = 'label label-danger';
+                } else if (val < 99.99) {
+                    slaEl.className = 'label label-warning';
+                } else {
+                    slaEl.className = 'label label-success';
+                }
+            }
         }
     }
 
