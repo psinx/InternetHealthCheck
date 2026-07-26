@@ -298,7 +298,7 @@ for h in range(current_hour + 1, 24):
 if os.path.exists(ram_file):
     with open(ram_file, "r") as f:
         for line in f:
-            parts = line.strip().split("|")
+            parts = line.strip().split(",")
             if len(parts) >= 4:
                 try:
                     ts = float(parts[0])
@@ -335,9 +335,8 @@ if log_file and os.path.exists(log_file):
                             days_diff = (today_date - dt.date()).days
                             if 0 <= days_diff < 3:
                                 day_label = ["Today", "Yesterday", "2 Days Ago"][days_diff]
-                                hour_idx = dt.hour
                                 # Only trigger DANGER status for primary eth0 failure or system-wide WAN outage
-                                if "[eth0]" in line or "CONNECTIVITY OUTAGE" in line or "Fail" in line:
+                                if "DOWN" in line or "Fail" in line:
                                     if "[wlan0]" not in line or "CONNECTIVITY OUTAGE" in line:
                                         hours_status[day_label][hour_idx] = "DANGER"
                                         if not hours_earliest[day_label][hour_idx]:
