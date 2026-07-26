@@ -171,7 +171,7 @@
                 slaEl.textContent = '● SLA: ' + val.toFixed(2) + '%';
                 if (val < 95.0) {
                     slaEl.className = 'label label-danger';
-                } else if (val < 100.0) {
+                } else if (val < 99.0) {
                     slaEl.className = 'label label-warning';
                 } else {
                     slaEl.className = 'label label-success';
