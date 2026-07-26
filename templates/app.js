@@ -146,7 +146,7 @@
         const headerLabel = document.getElementById('header-status-label');
         if (headerLabel) {
             headerLabel.className = activeStatus === 'Healthy' ? 'label label-success' : 'label label-danger';
-            headerLabel.textContent = '● Status: ' + activeStatus;
+            headerLabel.textContent = '● STATUS: ' + activeStatus;
         }
 
         let activeIface = null;

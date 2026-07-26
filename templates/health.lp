@@ -70,7 +70,7 @@ mg.include("scripts/lua/header.lp","r")
                 <div class="box-header with-border">
                     <h3 class="box-title"><i class="fas fa-network-wired"></i> Live DNS Chain Diagnostics</h3>
                     <div class="box-tools pull-right">
-                        <span id="header-status-label" class="label label-success" style="font-size: 0.9em;">● Status: Operational</span>
+                        <span id="header-status-label" class="label label-success" style="font-size: 0.9em;">● STATUS: Operational</span>
                     </div>
                 </div>
                 <div class="box-body">
@@ -205,7 +205,7 @@ mg.include("scripts/lua/header.lp","r")
             const headerLabel = document.getElementById('header-status-label');
             if (headerLabel) {
                 headerLabel.className = activeStatus === 'Healthy' ? 'label label-success' : 'label label-danger';
-                headerLabel.textContent = '● Status: ' + activeStatus;
+                headerLabel.textContent = '● STATUS: ' + activeStatus;
             }
 
             let activeIface = null;
