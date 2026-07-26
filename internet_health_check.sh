@@ -382,20 +382,74 @@ print(json.dumps(result))
 
 calculate_sla_percentage() {
     python3 -c '
-import os
+import os, json, time
+from datetime import datetime
+
 ram_file = os.environ.get("RAM_STATE_FILE", "/dev/shm/internet_health_history.txt")
 log_file = os.environ.get("LOG_FILE", "")
-total = 0
-healthy = 0
-if os.path.exists(ram_file):
-    with open(ram_file, "r") as f:
-        for line in f:
-            parts = line.strip().split("|")
-            if len(parts) >= 4:
-                total += 1
-                if parts[2] == "OK" and parts[3] == "true":
-                    healthy += 1
-pct = (healthy / total * 100.0) if total > 0 else 100.0
+
+hours_status = {"Today": ["OK"]*24, "Yesterday": ["OK"]*24, "2 Days Ago": ["OK"]*24}
+
+now_dt = datetime.now()
+today_date = now_dt.date()
+current_hour = now_dt.hour
+
+for h in range(current_hour + 1, 24):
+    hours_status["Today"][h] = "INACTIVE"
+
+if ram_file and os.path.exists(ram_file):
+    try:
+        with open(ram_file, "r") as f:
+            for line in f:
+                parts = line.strip().split(",")
+                if len(parts) >= 4:
+                    try:
+                        ts = float(parts[0])
+                        dt = datetime.fromtimestamp(ts)
+                        conn = parts[2]
+                        dns = parts[3]
+                        days_diff = (today_date - dt.date()).days
+                        if 0 <= days_diff < 3:
+                            day_label = ["Today", "Yesterday", "2 Days Ago"][days_diff]
+                            hour_idx = dt.hour
+                            if conn == "DOWN" or dns == "false":
+                                hours_status[day_label][hour_idx] = "DANGER"
+                    except Exception:
+                        pass
+    except Exception:
+        pass
+
+if log_file and os.path.exists(log_file):
+    try:
+        with open(log_file, "r") as f:
+            for line in f:
+                if "[INTERNET-HEALTH-CHECK]" in line:
+                    parts = line.strip().split()
+                    if len(parts) >= 2:
+                        try:
+                            dt = datetime.strptime(parts[0] + " " + parts[1], "%Y-%m-%d %H:%M:%S")
+                            days_diff = (today_date - dt.date()).days
+                            if 0 <= days_diff < 3:
+                                day_label = ["Today", "Yesterday", "2 Days Ago"][days_diff]
+                                hour_idx = dt.hour
+                                if "DOWN" in line or "Fail" in line:
+                                    hours_status[day_label][hour_idx] = "DANGER"
+                        except Exception:
+                            pass
+    except Exception:
+        pass
+
+active_hours = 0
+healthy_hours = 0
+for label in ["2 Days Ago", "Yesterday", "Today"]:
+    for h in range(24):
+        st = hours_status[label][h]
+        if st != "INACTIVE":
+            active_hours += 1
+            if st == "OK":
+                healthy_hours += 1
+
+pct = (healthy_hours / active_hours * 100.0) if active_hours > 0 else 100.0
 print(f"{pct:.2f}")
 ' 2>/dev/null || echo "100.00"
 }
