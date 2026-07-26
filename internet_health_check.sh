@@ -336,10 +336,12 @@ if log_file and os.path.exists(log_file):
                             if 0 <= days_diff < 3:
                                 day_label = ["Today", "Yesterday", "2 Days Ago"][days_diff]
                                 hour_idx = dt.hour
-                                if "DOWN" in line or "Fail" in line:
-                                    hours_status[day_label][hour_idx] = "DANGER"
-                                    if not hours_earliest[day_label][hour_idx]:
-                                        hours_earliest[day_label][hour_idx] = time_str
+                                # Only trigger DANGER status for primary eth0 failure or system-wide WAN outage
+                                if "[eth0]" in line or "CONNECTIVITY OUTAGE" in line or "Fail" in line:
+                                    if "[wlan0]" not in line or "CONNECTIVITY OUTAGE" in line:
+                                        hours_status[day_label][hour_idx] = "DANGER"
+                                        if not hours_earliest[day_label][hour_idx]:
+                                            hours_earliest[day_label][hour_idx] = time_str
                                     
                                     # Mark ONLY the specific component that failed its check
                                     if "Fail via Pi-hole" in line:
@@ -433,7 +435,8 @@ if log_file and os.path.exists(log_file):
                                 day_label = ["Today", "Yesterday", "2 Days Ago"][days_diff]
                                 hour_idx = dt.hour
                                 if "DOWN" in line or "Fail" in line:
-                                    hours_status[day_label][hour_idx] = "DANGER"
+                                    if "[wlan0]" not in line or "CONNECTIVITY OUTAGE" in line:
+                                        hours_status[day_label][hour_idx] = "DANGER"
                         except Exception:
                             pass
     except Exception:
