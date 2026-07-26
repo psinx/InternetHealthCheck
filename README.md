@@ -1,6 +1,9 @@
 # Internet Health Check 2.0
 
-A modular, lightweight Bash suite for monitoring internet connectivity and DNS chain health on Linux and Raspberry Pi OS. Includes a Pi-hole v6 styled web dashboard, zero-disk-wear RAM state tracking, real-time CLI diagnostics, and automated test coverage.
+A modular, lightweight Bash suite for monitoring internet connectivity and DNS chain health on Linux and Raspberry Pi OS. Features a native **Pi-hole v6 AdminLTE** web dashboard, zero-disk-wear RAM state tracking, interactive 72-hour historical SLA grid, auto dark/light theme switching, floating root-cause diagnostics tooltips, and real-time CLI diagnostics.
+
+[![Version v2.0.0](https://img.shields.io/badge/version-2.0.0-blue.svg)](https://github.com/psinx/InternetHealthCheck/releases/tag/v2.0.0)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ---
 
@@ -14,9 +17,9 @@ A modular, lightweight Bash suite for monitoring internet connectivity and DNS c
 ./internet_health_check.sh
 
 # Run health check with Pi-hole v6 HTML dashboard & RAM-based disk-wear protection
-./internet_health_check.sh --log-file logs/health.log --reduce-disk-wear --html-file /var/www/html/health/index.html
+./internet_health_check.sh --log-file logs/internet_health.log --reduce-disk-wear --html-file /var/www/html/health.html
 
-# Run unit and integration test suite
+# Run automated test suite
 ./tests/test_internet_health_check.sh
 ```
 
@@ -24,37 +27,55 @@ A modular, lightweight Bash suite for monitoring internet connectivity and DNS c
 
 ## 🌟 Key Features
 
-* **Modular Architecture**: Decoupled engine into modular components (`lib/network.sh`, `lib/logger.sh`, `lib/diagnose.sh`).
-* **Pi-hole v6 Admin Dashboard**: Generates a clean, dark-mode status page (`--html-file`) with 72-hour interactive history grid.
-* **Zero Disk Wear for Raspberry Pi**: Supports RAM-based state tracking (`/dev/shm/` or `tmpfs` auto-detection) with intelligent transition logging to protect SD cards and SSDs from wear.
-* **Interactive CLI Diagnostics (`--diagnose`)**: Displays a color-coded tree diagram of interface link status, gateway pings, and hop-by-hop DNS chain latencies in your terminal.
-* **Multi-Layer DNS Chain Monitoring**: Sequentially validates:
-  1. **Pi-hole** (`127.0.0.1:53`)
-  2. **dnscrypt-proxy** (`127.0.0.1:5053`)
-  3. **Upstream Public DNS** (Cloudflare `1.1.1.1:53` / Google `8.8.8.8`)
-* **Dynamic Interface Auto-Detection**: Auto-discovers physical active interfaces (e.g. `eth0`, `wlan0`), filtering out virtual docker/bridge links. Custom interfaces can be specified with `--interfaces`.
+* **Native Pi-hole v6 AdminLTE Dashboard Integration**:
+  * Styled natively after Pi-hole v6 using AdminLTE v3 layout engine and theme CSS variables.
+  * **Auto Dark / Light Mode**: Automatically switches between dark and light themes following system `prefers-color-scheme`, matching Pi-hole admin behavior.
+  * **Mobile Responsive**: Adapts DNS chain diagram into a 2×2 grid on mobile viewports with a ☰ hamburger sidebar toggle.
+
+* **72-Hour Historical SLA Grid & Floating Tooltips**:
+  * Chronological 3-row uptime grid (*2 Days Ago*, *Yesterday*, *Today*) with local clock hour mapping.
+  * **● STATUS: Operational** and **● SLA: XX.XX%** status badges with dynamic threshold color coding (Green ≥ 99.0%, Orange 95.0%–98.99%, Red < 95.0%).
+  * **Floating Interactive Tooltips**: Hover over grid cells to inspect graphical mini DNS chain flows (`Client -> Pi-hole -> dnscrypt-proxy -> Cloudflare`), root-cause component failure state (`OK` vs `FAIL`), and affected network interface breakdown (`eth0`, `wlan0`).
+
+* **Smart Multi-Interface & Maintenance Window Tolerance**:
+  * Distinguishes total WAN outages (🔴 **`DANGER`**) vs single-interface failover / DNS forwarding glitches (🟠 **`WARNING`**).
+  * Ignores single-interface `wlan0` maintenance drops (such as planned 30-minute weekly router reboots) when primary wired `eth0` is healthy and carrying traffic, avoiding false SLA penalties.
+
+* **Zero Disk Wear for Raspberry Pi**:
+  * Stores high-frequency 5-minute RAM state records in `/dev/shm/internet_health_history.txt`.
+  * Restricts disk log writes to state transitions and outages to protect SD card longevity.
+
+* **Multi-Hop DNS Chain & Interface Auto-Detection**:
+  * Sequentially validates:
+    1. **Pi-hole** (`127.0.0.1:53`)
+    2. **dnscrypt-proxy** (`127.0.0.1:5053`)
+    3. **Upstream Public DNS** (Cloudflare `1.1.1.3:53` / Google `8.8.8.8`)
+  * Auto-detects active interfaces (`eth0`, `wlan0`) and reads `dnscrypt-proxy` configuration files for dynamic resolver IP resolution.
 
 ---
 
 ## 📁 Repository Structure
 
 ```
-/workspace/
+.
 ├── internet_health_check.sh   # Main CLI runner, daemon entrypoint, & flag parser
 ├── lib/
 │   ├── network.sh             # Network interface discovery, ping, & dig DNS queries
 │   ├── logger.sh              # RAM state engine, disk wear reduction, & log rotation
 │   └── diagnose.sh            # Terminal diagnostic scanner (--diagnose)
 ├── templates/
-│   └── dashboard.html         # Pi-hole v6 styled HTML status page template
+│   ├── dashboard.html         # Native Pi-hole v6 AdminLTE dashboard template
+│   ├── app.js                 # CSP-compliant dashboard renderer & tooltip engine
+│   └── health.lp              # Pi-hole v6 Lua template integration page
 ├── tests/
 │   └── test_internet_health_check.sh  # Automated unit & integration test suite (18 tests)
-└── logs/                      # Log directory (auto-rotated at 2MB)
+├── CHANGELOG.md               # Version release notes (v1.0.0, v2.0.0)
+└── logs/                      # Log directory (auto-rotated at 2 MB)
 ```
 
 ---
 
-## 🛠️ Usage & Options
+## 🛠️ Usage & CLI Options
 
 ```bash
 Usage: ./internet_health_check.sh [OPTIONS]
@@ -66,6 +87,7 @@ Options:
   --html-file FILE      Generate a Pi-hole v6 style HTML status dashboard at FILE.
   --interfaces IFACES   Comma-separated list of interfaces (e.g., "eth0,wlan0").
                         Defaults to auto-detecting all active interfaces.
+  --upstream-dns IP     Override upstream DNS IP for resolution testing.
   --diagnose            Perform a real-time terminal diagnostics scan and exit.
   -h, --help            Show this help message.
 ```
@@ -87,8 +109,8 @@ Checking Interface: eth0
   ✓ 3. Gateway Ping (192.168.1.1): RESPONDING
   4. DNS Chain Resolution:
      ✓ Hop 1 (Pi-hole @127.0.0.1:53): PASS (4ms)
-     ✓ Hop 2 (dnscrypt-proxy @127.0.0.1:5053): PASS (0ms)
-     ✓ Hop 3 (Cloudflare public @1.1.1.1:53): PASS (16ms)
+     ✓ Hop 2 (dnscrypt-proxy @127.0.0.1:5053): PASS (4ms)
+     ✓ Hop 3 (Cloudflare public @1.1.1.3:53): PASS (16ms)
   STATUS: Interface online and fully operational.
 ```
 
@@ -97,16 +119,16 @@ Checking Interface: eth0
 ## 🛡️ Raspberry Pi & SD Card Optimization (`--reduce-disk-wear`)
 
 When running via `cron` (e.g. every 5 minutes), the `--reduce-disk-wear` flag:
-1. Writes high-frequency 5-minute status updates to RAM (`/dev/shm/` or `/tmp/`).
-2. Suppresses redundant `OK` disk log entries while the connection remains healthy.
+1. Writes high-frequency status updates to RAM (`/dev/shm/internet_health_history.txt`).
+2. Suppresses redundant `OK` disk log entries while connectivity remains healthy.
 3. Automatically triggers an immediate disk write and syslog alert upon **state changes** (e.g. `OK` ➔ `OUTAGE` or `OUTAGE` ➔ `OK`).
-4. Logs a 24-hour heartbeat to preserve long-term historical records.
+4. Logs a 24-hour heartbeat to preserve long-term historical records across reboots.
 
 ---
 
 ## 🧪 Test Suite
 
-Run the test suite to verify script functionality and regression prevention:
+Run the automated unit and integration test suite:
 
 ```bash
 ./tests/test_internet_health_check.sh
