@@ -335,6 +335,7 @@ if log_file and os.path.exists(log_file):
                             days_diff = (today_date - dt.date()).days
                             if 0 <= days_diff < 3:
                                 day_label = ["Today", "Yesterday", "2 Days Ago"][days_diff]
+                                hour_idx = dt.hour
                                 # Only trigger DANGER status for primary eth0 failure or system-wide WAN outage
                                 if "CONNECTIVITY OUTAGE" in line or "Fail during Ping" in line:
                                     hours_status[day_label][hour_idx] = "DANGER"
