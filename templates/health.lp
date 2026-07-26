@@ -103,7 +103,7 @@ mg.include("scripts/lua/header.lp","r")
                 <div class="box-header with-border">
                     <h3 class="box-title"><i class="fas fa-history"></i> Historical Uptime (Last 72 Hours)</h3>
                     <div class="box-tools pull-right">
-                        <span id="grid-uptime-pct" class="label label-success" style="font-size: 0.9em;">● SLA: 100.00%</span>
+                        <span id="grid-uptime-pct" class="label label-warning" style="font-size: 0.9em;">● SLA: 96.61%</span>
                     </div>
                 </div>
                 <div class="box-body">
@@ -245,7 +245,7 @@ mg.include("scripts/lua/header.lp","r")
                     slaEl.textContent = '● SLA: ' + val.toFixed(2) + '%';
                     if (val < 95.0) {
                         slaEl.className = 'label label-danger';
-                    } else if (val < 99.99) {
+                    } else if (val < 100.0) {
                         slaEl.className = 'label label-warning';
                     } else {
                         slaEl.className = 'label label-success';
