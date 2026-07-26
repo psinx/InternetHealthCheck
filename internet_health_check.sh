@@ -373,9 +373,9 @@ for label in ["2 Days Ago", "Yesterday", "Today"]:
     day_cells = []
     for h in range(24):
         st = hours_status[label][h]
-        earliest = hours_earliest[label][h]
-        nodes = hours_nodes[label][h]
-        iface_list = sorted(list(hours_ifaces[label][h]))
+        earliest = hours_earliest[label][h] if st != "OK" else ""
+        nodes = hours_nodes[label][h] if st != "OK" else {"pi": True, "dns": True, "cf": True}
+        iface_list = sorted(list(hours_ifaces[label][h])) if st != "OK" else []
         iface_str = ", ".join(iface_list)
         day_cells.append({
             "hour": h,

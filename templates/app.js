@@ -23,13 +23,25 @@
     }
 
     function renderMiniChainHtml(hourData, dayLabel, timeRange) {
-        // Evaluate exact root-cause failure per node
-        const piOk = hourData.pihole !== undefined ? hourData.pihole : (hourData.status === 'OK');
-        const dnsOk = hourData.dnscrypt !== undefined ? hourData.dnscrypt : (hourData.status === 'OK');
-        const cfOk = hourData.cloudflare !== undefined ? hourData.cloudflare : (hourData.status === 'OK');
+        if (hourData.status === 'INACTIVE') {
+            let html = '<div style="font-weight: bold; margin-bottom: 6px; border-bottom: 1px solid #4b646f; padding-bottom: 4px; display: flex; justify-content: space-between; align-items: center; gap: 15px;">' +
+                       '<span>' + dayLabel + ' ' + timeRange + '</span>' +
+                       '<span class="label label-default">Pending</span>' +
+                       '</div>';
+            html += '<div style="font-size: 11px; color: #8a8a8a; margin-top: 4px; text-align: center; background: #1a2226; padding: 6px 8px; border-radius: 4px;">' +
+                    'Monitoring slot pending' +
+                    '</div>';
+            return html;
+        }
 
-        const badgeClass = hourData.status === 'OK' ? 'label label-success' : (hourData.status === 'DANGER' ? 'label label-danger' : (hourData.status === 'WARNING' ? 'label label-warning' : 'label label-default'));
-        const badgeText = hourData.status === 'OK' ? '100% Operational' : (hourData.status === 'DANGER' ? 'Outage' : (hourData.status === 'INACTIVE' ? 'Pending' : hourData.status));
+        const isOk = hourData.status === 'OK';
+        // Green OK cells MUST always show 100% green OK nodes
+        const piOk = isOk ? true : (hourData.pihole !== false);
+        const dnsOk = isOk ? true : (hourData.dnscrypt !== false);
+        const cfOk = isOk ? true : (hourData.cloudflare !== false);
+
+        const badgeClass = isOk ? 'label label-success' : (hourData.status === 'DANGER' ? 'label label-danger' : (hourData.status === 'WARNING' ? 'label label-warning' : 'label label-default'));
+        const badgeText = isOk ? '100% Operational' : (hourData.status === 'DANGER' ? 'Outage' : hourData.status);
 
         const piStyle = piOk ? 'color: #00a65a;' : 'color: #dd4b39;';
         const dnsStyle = dnsOk ? 'color: #00a65a;' : 'color: #dd4b39;';
@@ -39,15 +51,13 @@
         const dnsLabel = 'dnscrypt (' + (dnsOk ? 'OK' : 'FAIL') + ')';
         const cfLabel = 'Cloudflare (' + (cfOk ? 'OK' : 'FAIL') + ')';
 
-        const clientLabel = hourData.iface ? ('Client [' + hourData.iface + ']') : 'Client';
-
         let html = '<div style="font-weight: bold; margin-bottom: 6px; border-bottom: 1px solid #4b646f; padding-bottom: 4px; display: flex; justify-content: space-between; align-items: center; gap: 15px;">' +
                    '<span>' + dayLabel + ' ' + timeRange + '</span>' +
                    '<span class="' + badgeClass + '">' + badgeText + '</span>' +
                    '</div>';
 
         html += '<div style="display: flex; align-items: center; gap: 6px; margin: 6px 0; background: #1a2226; padding: 5px 8px; border-radius: 4px; font-family: monospace; font-size: 11px;">' +
-                '<span style="color: #00a65a; font-weight: bold;">' + clientLabel + '</span>' +
+                '<span style="color: #00a65a; font-weight: bold;">Client</span>' +
                 '<span style="color: #777;">&rarr;</span>' +
                 '<span style="' + piStyle + ' font-weight: bold;">' + piLabel + '</span>' +
                 '<span style="color: #777;">&rarr;</span>' +
@@ -56,9 +66,14 @@
                 '<span style="' + cfStyle + ' font-weight: bold;">' + cfLabel + '</span>' +
                 '</div>';
 
-        if (hourData.earliest_issue) {
-            const ifaceText = hourData.iface ? (' on <strong>' + hourData.iface + '</strong>') : '';
-            html += '<div style="font-size: 11px; color: #b8c7ce; margin-top: 4px;">First issue' + ifaceText + ' at <strong>' + hourData.earliest_issue + '</strong></div>';
+        if (!isOk) {
+            const ifaceText = hourData.iface ? hourData.iface : 'eth0, wlan0';
+            html += '<div style="font-size: 11px; color: #f39c12; margin-top: 4px;">Affected Interface(s): <strong>' + ifaceText + '</strong></div>';
+            if (hourData.earliest_issue) {
+                html += '<div style="font-size: 11px; color: #b8c7ce; margin-top: 2px;">First issue at <strong>' + hourData.earliest_issue + '</strong></div>';
+            }
+        } else {
+            html += '<div style="font-size: 11px; color: #b8c7ce; margin-top: 4px;">Tested Interfaces: <strong>eth0, wlan0</strong></div>';
         }
 
         return html;
