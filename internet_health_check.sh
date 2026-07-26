@@ -346,18 +346,13 @@ if log_file and os.path.exists(log_file):
                                     if not hours_earliest[day_label][hour_idx]:
                                         hours_earliest[day_label][hour_idx] = time_str
                                     
-                                    # Mark ONLY the specific component that failed its check
-                                    if "Fail via Pi-hole" in line:
-                                        hours_nodes[day_label][hour_idx]["pi"] = False
-                                    elif "Fail via dnscrypt" in line:
-                                        hours_nodes[day_label][hour_idx]["dns"] = False
-                                    elif "Fail via Cloudflare" in line:
-                                        hours_nodes[day_label][hour_idx]["cf"] = False
-                                    elif "CONNECTIVITY OUTAGE" in line or "Fail during Ping" in line:
-                                        # External WAN outage: Local services (Pi-hole & dnscrypt) remain OK; external Cloudflare fails!
-                                        hours_nodes[day_label][hour_idx]["pi"] = True
-                                        hours_nodes[day_label][hour_idx]["dns"] = True
-                                        hours_nodes[day_label][hour_idx]["cf"] = False
+                                # Mark specific component failures across the chain
+                                if "Fail via Pi-hole" in line:
+                                    hours_nodes[day_label][hour_idx]["pi"] = False
+                                elif "Fail via dnscrypt" in line:
+                                    hours_nodes[day_label][hour_idx]["dns"] = False
+                                elif "Fail via Cloudflare" in line or "CONNECTIVITY OUTAGE" in line or "Fail during Ping" in line:
+                                    hours_nodes[day_label][hour_idx]["cf"] = False
                         except Exception:
                             pass
     except Exception:
