@@ -342,9 +342,10 @@ if log_file and os.path.exists(log_file):
                                 day_label = ["Today", "Yesterday", "2 Days Ago"][days_diff]
                                 hour_idx = dt.hour
                                 
-                                # Track affected interfaces
-                                if "[eth0]" in line: hours_ifaces[day_label][hour_idx].add("eth0")
-                                if "[wlan0]" in line: hours_ifaces[day_label][hour_idx].add("wlan0")
+                                # Track affected failing interfaces
+                                if "DOWN" in line or "Fail" in line:
+                                    if "[eth0]" in line: hours_ifaces[day_label][hour_idx].add("eth0")
+                                    if "[wlan0]" in line: hours_ifaces[day_label][hour_idx].add("wlan0")
 
                                 # Only trigger DANGER status for primary eth0 failure or system-wide WAN outage
                                 if "CONNECTIVITY OUTAGE" in line or "Fail during Ping" in line:
