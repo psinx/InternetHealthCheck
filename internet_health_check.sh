@@ -282,6 +282,9 @@ log_file = os.environ.get("LOG_FILE", "")
 
 hours_status = {"Today": ["OK"]*24, "Yesterday": ["OK"]*24, "2 Days Ago": ["OK"]*24}
 hours_earliest = {"Today": [""]*24, "Yesterday": [""]*24, "2 Days Ago": [""]*24}
+hours_ifaces = {"Today": [set() for _ in range(24)],
+                "Yesterday": [set() for _ in range(24)],
+                "2 Days Ago": [set() for _ in range(24)]}
 hours_nodes = {"Today": [{"pi": True, "dns": True, "cf": True} for _ in range(24)],
                "Yesterday": [{"pi": True, "dns": True, "cf": True} for _ in range(24)],
                "2 Days Ago": [{"pi": True, "dns": True, "cf": True} for _ in range(24)]}
@@ -303,6 +306,7 @@ if os.path.exists(ram_file):
                 try:
                     ts = float(parts[0])
                     dt = datetime.fromtimestamp(ts)
+                    iface = parts[1]
                     conn = parts[2]
                     dns = parts[3]
                     pihole_ok = (parts[5] == "true") if len(parts) > 5 else True
@@ -316,6 +320,7 @@ if os.path.exists(ram_file):
                         hours_nodes[day_label][hour_idx] = {"pi": pihole_ok, "dns": dnscrypt_ok, "cf": cloudflare_ok}
                         if conn == "DOWN" or dns == "false":
                             hours_status[day_label][hour_idx] = "DANGER"
+                            if iface: hours_ifaces[day_label][hour_idx].add(iface)
                             if not hours_earliest[day_label][hour_idx]:
                                 hours_earliest[day_label][hour_idx] = dt.strftime("%Y-%m-%d %H:%M:%S")
                 except Exception:
@@ -336,6 +341,11 @@ if log_file and os.path.exists(log_file):
                             if 0 <= days_diff < 3:
                                 day_label = ["Today", "Yesterday", "2 Days Ago"][days_diff]
                                 hour_idx = dt.hour
+                                
+                                # Track affected interfaces
+                                if "[eth0]" in line: hours_ifaces[day_label][hour_idx].add("eth0")
+                                if "[wlan0]" in line: hours_ifaces[day_label][hour_idx].add("wlan0")
+
                                 # Only trigger DANGER status for primary eth0 failure or system-wide WAN outage
                                 if "CONNECTIVITY OUTAGE" in line or "Fail during Ping" in line:
                                     hours_status[day_label][hour_idx] = "DANGER"
@@ -365,11 +375,14 @@ for label in ["2 Days Ago", "Yesterday", "Today"]:
         st = hours_status[label][h]
         earliest = hours_earliest[label][h]
         nodes = hours_nodes[label][h]
+        iface_list = sorted(list(hours_ifaces[label][h]))
+        iface_str = ", ".join(iface_list)
         day_cells.append({
             "hour": h,
             "status": st,
             "uptime": 100 if st == "OK" else 0,
             "earliest_issue": earliest,
+            "iface": iface_str,
             "pihole": nodes["pi"],
             "dnscrypt": nodes["dns"],
             "cloudflare": nodes["cf"]

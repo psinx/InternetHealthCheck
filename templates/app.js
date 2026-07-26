@@ -39,13 +39,15 @@
         const dnsLabel = 'dnscrypt (' + (dnsOk ? 'OK' : 'FAIL') + ')';
         const cfLabel = 'Cloudflare (' + (cfOk ? 'OK' : 'FAIL') + ')';
 
+        const clientLabel = hourData.iface ? ('Client [' + hourData.iface + ']') : 'Client';
+
         let html = '<div style="font-weight: bold; margin-bottom: 6px; border-bottom: 1px solid #4b646f; padding-bottom: 4px; display: flex; justify-content: space-between; align-items: center; gap: 15px;">' +
                    '<span>' + dayLabel + ' ' + timeRange + '</span>' +
                    '<span class="' + badgeClass + '">' + badgeText + '</span>' +
                    '</div>';
 
         html += '<div style="display: flex; align-items: center; gap: 6px; margin: 6px 0; background: #1a2226; padding: 5px 8px; border-radius: 4px; font-family: monospace; font-size: 11px;">' +
-                '<span style="color: #00a65a; font-weight: bold;">Client</span>' +
+                '<span style="color: #00a65a; font-weight: bold;">' + clientLabel + '</span>' +
                 '<span style="color: #777;">&rarr;</span>' +
                 '<span style="' + piStyle + ' font-weight: bold;">' + piLabel + '</span>' +
                 '<span style="color: #777;">&rarr;</span>' +
@@ -55,7 +57,8 @@
                 '</div>';
 
         if (hourData.earliest_issue) {
-            html += '<div style="font-size: 11px; color: #b8c7ce; margin-top: 4px;">First issue detected at <strong>' + hourData.earliest_issue + '</strong></div>';
+            const ifaceText = hourData.iface ? (' on <strong>' + hourData.iface + '</strong>') : '';
+            html += '<div style="font-size: 11px; color: #b8c7ce; margin-top: 4px;">First issue' + ifaceText + ' at <strong>' + hourData.earliest_issue + '</strong></div>';
         }
 
         return html;
@@ -136,6 +139,16 @@
             if (data.interfaces.eth0 && data.interfaces.eth0.exists) activeIface = data.interfaces.eth0;
             else if (data.interfaces.wlan0 && data.interfaces.wlan0.exists) activeIface = data.interfaces.wlan0;
             
+            const clientDesc = document.getElementById('node-client-desc');
+            if (clientDesc) {
+                const eth = data.interfaces.eth0;
+                const wlan = data.interfaces.wlan0;
+                let parts = [];
+                if (eth && eth.exists) parts.push('eth0: ' + (eth.connectivity === 'OK' ? 'Online' : 'Down'));
+                if (wlan && wlan.exists) parts.push('wlan0: ' + (wlan.connectivity === 'OK' ? 'Online' : 'Down'));
+                clientDesc.textContent = parts.length > 0 ? parts.join(' | ') : 'Local Machine (Active)';
+            }
+
             updateInterfaceRow('if-eth', data.interfaces.eth0);
             updateInterfaceRow('if-wlan', data.interfaces.wlan0);
             
