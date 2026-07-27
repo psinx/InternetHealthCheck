@@ -319,7 +319,11 @@ if os.path.exists(ram_file):
                         hour_idx = dt.hour
                         hours_nodes[day_label][hour_idx] = {"pi": pihole_ok, "dns": dnscrypt_ok, "cf": cloudflare_ok}
                         if conn == "DOWN" or dns == "false":
-                            hours_status[day_label][hour_idx] = "DANGER"
+                            if iface == "wlan0":
+                                if hours_status[day_label][hour_idx] != "DANGER":
+                                    hours_status[day_label][hour_idx] = "WARNING"
+                            else:
+                                hours_status[day_label][hour_idx] = "DANGER"
                             if iface: hours_ifaces[day_label][hour_idx].add(iface)
                             if not hours_earliest[day_label][hour_idx]:
                                 hours_earliest[day_label][hour_idx] = dt.strftime("%Y-%m-%d %H:%M:%S")
@@ -348,7 +352,7 @@ if log_file and os.path.exists(log_file):
                                     if "[wlan0]" in line: hours_ifaces[day_label][hour_idx].add("wlan0")
 
                                 # Only trigger DANGER status for primary eth0 failure or system-wide WAN outage
-                                if "CONNECTIVITY OUTAGE" in line or "Fail during Ping" in line:
+                                if "[eth0]" in line and ("CONNECTIVITY OUTAGE" in line or "Fail during Ping" in line):
                                     hours_status[day_label][hour_idx] = "DANGER"
                                     if not hours_earliest[day_label][hour_idx]:
                                         hours_earliest[day_label][hour_idx] = time_str
