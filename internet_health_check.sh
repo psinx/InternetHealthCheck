@@ -229,9 +229,9 @@ generate_status_json() {
 
     local json_target="$target_dir/status.json"
 
-    # Calculate overall system health
+    # Calculate overall system health based on current live interface connectivity
     local system_status="Healthy"
-    if grep -q "DOWN" "$RAM_STATE_FILE" 2>/dev/null; then
+    if echo "$ifaces_json" | grep -q '"connectivity": "DOWN"' || echo "$ifaces_json" | grep -q '"dns_ok": false'; then
         system_status="Degraded"
     fi
 
