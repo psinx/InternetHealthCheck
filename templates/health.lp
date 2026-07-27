@@ -201,7 +201,12 @@ mg.include("scripts/lua/header.lp","r")
         }
 
         function updateUI(data) {
-            const activeStatus = data.status || 'Healthy';
+            let activeStatus = data.status || 'Healthy';
+            if (data.interfaces) {
+                const ethOk = !data.interfaces.eth0 || !data.interfaces.eth0.exists || (data.interfaces.eth0.connectivity === 'OK' && data.interfaces.eth0.dns_ok !== false);
+                const wlanOk = !data.interfaces.wlan0 || !data.interfaces.wlan0.exists || (data.interfaces.wlan0.connectivity === 'OK');
+                activeStatus = (ethOk && wlanOk) ? 'Healthy' : 'Degraded';
+            }
             const headerLabel = document.getElementById('header-status-label');
             if (headerLabel) {
                 headerLabel.className = activeStatus === 'Healthy' ? 'label label-success' : 'label label-danger';
