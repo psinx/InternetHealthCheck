@@ -489,21 +489,22 @@ if log_file and os.path.exists(log_file):
         for line in reversed(lines):
             if "[INTERNET-HEALTH-CHECK]" in line and "DOWN" in line:
                 parts = line.strip().split()
-                if len(parts) >= 5:
+                if len(parts) >= 2:
                     time_str = parts[0] + " " + parts[1]
                     try:
                         dt = datetime.strptime(time_str, "%Y-%m-%d %H:%M:%S")
                         ts = dt.timestamp()
                         if (now - ts) <= max_age_seconds:
-                            iface = parts[3].strip("[]")
+                            iface = "eth0" if "[eth0]" in line else ("wlan0" if "[wlan0]" in line else "eth0")
                             key = f"{time_str}_{iface}"
                             if key not in seen_events:
                                 seen_events.add(key)
+                                is_total_outage = (iface == "eth0" or "CONNECTIVITY OUTAGE" in line)
                                 incidents.append({
-                                    "type": "outage",
-                                    "badge": "Outage",
+                                    "type": "outage" if is_total_outage else "warning",
+                                    "badge": "Outage" if is_total_outage else "Warning",
                                     "timestamp": f"{time_str} ({iface})",
-                                    "description": "DOWN - CONNECTIVITY OUTAGE detected",
+                                    "description": "DOWN - CONNECTIVITY OUTAGE detected" if is_total_outage else f"Interface link down ({iface})",
                                     "duration": ""
                                 })
                                 if len(incidents) >= 10:
@@ -519,21 +520,23 @@ if len(incidents) < 10 and os.path.exists(ram_file):
         with open(ram_file, "r") as f:
             lines = f.readlines()
         for line in reversed(lines):
-            parts = line.strip().split("|")
+            parts = line.strip().split(",")
             if len(parts) >= 4 and (parts[2] == "DOWN" or parts[3] == "false"):
                 try:
                     ts = float(parts[0])
                     if (now - ts) <= max_age_seconds:
-                        ts_str = parts[1]
-                        iface = parts[4] if len(parts) > 4 else "wlan0"
+                        dt = datetime.fromtimestamp(ts)
+                        ts_str = dt.strftime("%Y-%m-%d %H:%M:%S")
+                        iface = parts[1] if len(parts) > 1 else "wlan0"
                         key = f"{ts_str}_{iface}"
                         if key not in seen_events:
                             seen_events.add(key)
+                            is_total_outage = (iface == "eth0" or parts[2] == "DOWN")
                             incidents.append({
-                                "type": "outage",
-                                "badge": "Outage",
+                                "type": "outage" if is_total_outage else "warning",
+                                "badge": "Outage" if is_total_outage else "Warning",
                                 "timestamp": f"{ts_str} ({iface})",
-                                "description": "DOWN - CONNECTIVITY OUTAGE detected",
+                                "description": "DOWN - CONNECTIVITY OUTAGE detected" if is_total_outage else f"Interface link down ({iface})",
                                 "duration": ""
                             })
                             if len(incidents) >= 10:
