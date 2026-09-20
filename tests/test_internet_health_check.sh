@@ -541,6 +541,86 @@ TESTEOF
     cleanup_test_env
 }
 
+test_18_custom_pihole_and_skip_dnscrypt() {
+    echo "TEST 18: --pihole-host and --skip-dnscrypt flags"
+    setup_test_env
+
+    cat > /tmp/test_custom_dns.sh << 'TESTEOF'
+#!/bin/bash
+ip() { echo "2: eth0: inet 192.168.1.100/24 scope global eth0"; return 0; }
+ping() { return 0; }
+dig() {
+    echo "DIG_ARGS: $*" >> /tmp/dig_calls.log
+    echo ";; Query time: 10 msec"
+    return 0
+}
+logger() { return 0; }
+export -f ip ping dig logger
+rm -f /tmp/dig_calls.log
+source "$SCRIPT_PATH"
+main --interfaces "eth0" --pihole-host "192.168.1.2" --skip-dnscrypt --format pretty
+TESTEOF
+    chmod +x /tmp/test_custom_dns.sh
+
+    local out
+    out=$(SCRIPT_PATH="$SCRIPT_PATH" bash /tmp/test_custom_dns.sh 2>&1)
+
+    local dig_calls=""
+    [[ -f /tmp/dig_calls.log ]] && dig_calls=$(cat /tmp/dig_calls.log)
+
+    if echo "$dig_calls" | grep -q "@192.168.1.2" && ! echo "$dig_calls" | grep -q "5053"; then
+        assert_pass "Custom Pi-hole queried and dnscrypt bypassed"
+    else
+        assert_fail "Dig calls did not match expected: $dig_calls"
+    fi
+
+    if echo "$out" | grep -q "Pi-hole @192.168.1.2:53" && echo "$out" | grep -q "dnscrypt-proxy): SKIPPED"; then
+        assert_pass "Pretty output reflects custom Pi-hole and skipped dnscrypt"
+    else
+        assert_fail "Pretty output did not match expected: $out"
+    fi
+    rm -f /tmp/dig_calls.log /tmp/test_custom_dns.sh
+    cleanup_test_env
+}
+
+test_19_ram_fallback_and_record_run() {
+    echo "TEST 19: RAM fallback directory and record_run creation"
+    setup_test_env
+
+    # Verify fallback logic when /dev/shm is absent
+    local fallback_dir
+    fallback_dir=$(bash -c '
+        DEFAULT_RAM_DIR="/dev/shm"
+        [ ! -d "/dev/nonexistent_shm_test" ] && DEFAULT_RAM_DIR="/tmp"
+        echo "$DEFAULT_RAM_DIR"
+    ')
+    if [ "$fallback_dir" = "/tmp" ]; then
+        assert_pass "Fallback evaluates to /tmp when /dev/shm is absent"
+    else
+        assert_fail "Fallback logic did not select /tmp: $fallback_dir"
+    fi
+
+    # Verify record_run writes cleanly to non-/dev/shm paths
+    local custom_ram="/tmp/test_ram_sub/history.txt"
+    rm -rf /tmp/test_ram_sub
+    cat > /tmp/test_record.sh << TESTEOF
+#!/bin/bash
+export RAM_STATE_FILE="$custom_ram"
+source "$SCRIPT_PATH"
+record_run "eth0" "OK" "OK" "OK" "SKIPPED" "OK" "10ms" "0ms" "10ms" "0%"
+TESTEOF
+    chmod +x /tmp/test_record.sh
+    SCRIPT_PATH="$SCRIPT_PATH" bash /tmp/test_record.sh >/dev/null 2>&1
+
+    if [ -f "$custom_ram" ] && grep -q "eth0,OK" "$custom_ram"; then
+        assert_pass "record_run successfully created directory and wrote state outside /dev/shm"
+    else
+        assert_fail "record_run failed to write to custom RAM state path"
+    fi
+    rm -rf /tmp/test_ram_sub /tmp/test_record.sh
+    cleanup_test_env
+}
+
 #=============================================================================
 # Main
 #=============================================================================
@@ -657,6 +737,10 @@ main() {
     test_16_format_pretty
     echo ""
     test_17_format_log
+    echo ""
+    test_18_custom_pihole_and_skip_dnscrypt
+    echo ""
+    test_19_ram_fallback_and_record_run
     
     echo ""
     echo "=========================================="
