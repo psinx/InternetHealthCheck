@@ -65,7 +65,7 @@ HOME="$TEST_HOME"
 export HOME
 source "$SCRIPT_PATH"
 export RAM_STATE_FILE="$TEST_RAM_FILE"
-main --log-file "$TEST_LOG_FILE" --html-file "$TEST_HOME/status.json"
+main --log-file "$TEST_LOG_FILE" --html-file "$TEST_HOME/status.json" --format log
 TESTEOF
     else
         cat > /tmp/run_test.sh << 'TESTEOF'
@@ -126,7 +126,7 @@ export -f ip ping dig logger
 # Source and run the main method directly
 source "$SCRIPT_PATH"
 export RAM_STATE_FILE="$TEST_RAM_FILE"
-main --log-file "$TEST_LOG_FILE" --interfaces "eth0,wlan0"
+main --log-file "$TEST_LOG_FILE" --interfaces "eth0,wlan0" --format log
 TESTEOF
     fi
     
@@ -489,6 +489,58 @@ TESTEOF
     fi
 }
 
+test_16_format_pretty() {
+    echo "TEST 16: --format pretty outputs visual status"
+    setup_test_env
+
+    cat > /tmp/test_pretty.sh << 'TESTEOF'
+#!/bin/bash
+ip() { echo "2: eth0: inet 192.168.1.100/24 scope global eth0"; return 0; }
+ping() { return 0; }
+dig() { echo ";; Query time: 10 msec"; return 0; }
+logger() { return 0; }
+export -f ip ping dig logger
+source "$SCRIPT_PATH"
+main --interfaces "eth0" --format pretty
+TESTEOF
+    chmod +x /tmp/test_pretty.sh
+
+    local out
+    out=$(SCRIPT_PATH="$SCRIPT_PATH" bash /tmp/test_pretty.sh 2>&1)
+    if echo "$out" | grep -q "INTERNET HEALTH - REAL-TIME STATUS" && echo "$out" | grep -q "DNS Chain Resolution"; then
+        assert_pass "--format pretty outputs visual status"
+    else
+        assert_fail "--format pretty failed to output visual status: $out"
+    fi
+    cleanup_test_env
+}
+
+test_17_format_log() {
+    echo "TEST 17: --format log outputs timestamped log line"
+    setup_test_env
+
+    cat > /tmp/test_log_format.sh << 'TESTEOF'
+#!/bin/bash
+ip() { echo "2: eth0: inet 192.168.1.100/24 scope global eth0"; return 0; }
+ping() { return 0; }
+dig() { echo ";; Query time: 10 msec"; return 0; }
+logger() { return 0; }
+export -f ip ping dig logger
+source "$SCRIPT_PATH"
+main --interfaces "eth0" --format log
+TESTEOF
+    chmod +x /tmp/test_log_format.sh
+
+    local out
+    out=$(SCRIPT_PATH="$SCRIPT_PATH" bash /tmp/test_log_format.sh 2>&1)
+    if echo "$out" | grep -q "\[INTERNET-HEALTH-CHECK\] \[eth0\] OK"; then
+        assert_pass "--format log outputs timestamped log line"
+    else
+        assert_fail "--format log failed to output log line: $out"
+    fi
+    cleanup_test_env
+}
+
 #=============================================================================
 # Main
 #=============================================================================
@@ -601,6 +653,10 @@ main() {
     test_14_rotate_log_large_file
     echo ""
     test_15_usage_output
+    echo ""
+    test_16_format_pretty
+    echo ""
+    test_17_format_log
     
     echo ""
     echo "=========================================="

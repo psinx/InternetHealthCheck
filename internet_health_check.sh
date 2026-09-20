@@ -13,6 +13,8 @@ readonly PING_COUNT=4
 
 readonly PIHOLE_PORT="53"
 readonly DNSCRYPT_PORT="5053"
+readonly DNS_TIMEOUT=3
+readonly DNS_TRIES=2
 
 readonly MAX_LOG_SIZE=$((2 * 1024 * 1024))   # 2 MB log rotation size
 readonly MAX_ROTATIONS=7
@@ -24,14 +26,14 @@ REDUCE_DISK_WEAR=false
 HTML_FILE=""
 INTERFACE_OVERRIDE=""
 UPSTREAM_DNS=""
-RUN_DIAGNOSTICS=false
+OUTPUT_FORMAT=""
 TAG="[INTERNET-HEALTH-CHECK]"
 
 # Resolve script directory and source libraries
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/lib/network.sh"
 source "${SCRIPT_DIR}/lib/logger.sh"
-source "${SCRIPT_DIR}/lib/diagnose.sh"
+source "${SCRIPT_DIR}/lib/display.sh"
 
 # Display CLI Help Usage
 usage() {
@@ -42,20 +44,23 @@ Options:
   --log-file FILE       Write logs to FILE instead of stdout
   --reduce-disk-wear    Reduce log writes: store 30-day logs in RAM (/dev/shm/),
                         only write state changes/outages to disk log.
+  --format FORMAT       Output format: 'pretty' (visual checklist) or 'log' (syslog style).
+                        Defaults to 'pretty' in interactive terminals, 'log' when piped/cron.
+  --pretty              Shortcut for --format pretty
+  --log-format          Shortcut for --format log
   --html-file FILE      Generate a beautiful Pi-hole v6 style HTML status dashboard at FILE.
   --interfaces IFACES   Comma-separated list of interfaces to monitor (e.g. eth0,wlan0).
                         Defaults to auto-detecting all active interfaces.
   --upstream-dns IP     Specify upstream DNS server IP to query (e.g. 1.1.1.3).
                         Defaults to auto-detecting server_names from /etc/dnscrypt-proxy/dnscrypt-proxy.toml.
-  --diagnose            Perform a real-time terminal diagnostics scan and exit.
   -h, --help            Show this help message
 
 Examples:
-  # Run a real-time check and output to stdout
+  # Run a real-time check with visual terminal output
   ./internet_health_check.sh
 
-  # Run diagnostic check and exit
-  ./internet_health_check.sh --diagnose
+  # Output standard log lines to stdout
+  ./internet_health_check.sh --format log
 
   # Run daemon in cron, writing to RAM and logging transition alerts to disk
   ./internet_health_check.sh --log-file logs/health.log --reduce-disk-wear --html-file /var/www/html/health/index.html
@@ -66,10 +71,14 @@ EOF
 discover_interfaces() {
     if [[ "$OSTYPE" == "darwin"* ]]; then
         # On macOS, search for active Ethernet (en) links
-        ifconfig -l | tr ' ' '\n' | grep -E '^en|^eth' || echo "en0"
-    else
+        ifconfig -l 2>/dev/null | tr ' ' '\n' | grep -E '^en|^eth' || echo "en0"
+    elif command -v ip >/dev/null 2>&1; then
         # On Linux, list physical interfaces excluding local loops, bridges, and docker
-        ip -o link show | awk -F': ' '{print $2}' | grep -vE 'lo|docker|veth|br-' || echo "eth0"
+        ip -o link show 2>/dev/null | awk -F': ' '{print $2}' | grep -vE 'lo|docker|veth|br-' || echo "eth0"
+    elif command -v ifconfig >/dev/null 2>&1; then
+        ifconfig -s 2>/dev/null | awk '{print $1}' | grep -vE 'Iface|lo|docker|veth|br-' || echo "eth0"
+    else
+        echo "eth0"
     fi
 }
 
@@ -88,6 +97,18 @@ main() {
                 REDUCE_DISK_WEAR=true
                 shift
                 ;;
+            --format)
+                OUTPUT_FORMAT="$2"
+                shift 2
+                ;;
+            --pretty)
+                OUTPUT_FORMAT="pretty"
+                shift
+                ;;
+            --log-format)
+                OUTPUT_FORMAT="log"
+                shift
+                ;;
             --html-file)
                 HTML_FILE="$2"
                 shift 2
@@ -99,10 +120,6 @@ main() {
             --upstream-dns)
                 UPSTREAM_DNS="$2"
                 shift 2
-                ;;
-            --diagnose)
-                RUN_DIAGNOSTICS=true
-                shift
                 ;;
             -h|--help)
                 usage
@@ -116,11 +133,15 @@ main() {
         esac
     done
 
-    # Run diagnostics scan if requested
-    if [[ "$RUN_DIAGNOSTICS" == "true" ]]; then
-        diagnose_cli
-        exit 0
+    # Default output format: pretty when attached to a TTY, log otherwise
+    if [[ -z "$OUTPUT_FORMAT" ]]; then
+        if [[ -t 1 ]]; then
+            OUTPUT_FORMAT="pretty"
+        else
+            OUTPUT_FORMAT="log"
+        fi
     fi
+    export OUTPUT_FORMAT="$OUTPUT_FORMAT"
 
     # Determine interfaces to check
     local interfaces=()
@@ -146,15 +167,22 @@ main() {
     local detected_upstream
     detected_upstream=$(detect_upstream_dns "$UPSTREAM_DNS")
 
+    # Print pretty header if pretty output format selected
+    if [[ "$OUTPUT_FORMAT" == "pretty" ]]; then
+        print_pretty_header
+    fi
+
     # JSON accumulator structure for status generation
     local json_ifaces=""
 
     # Process each interface
     for iface in "${interfaces[@]}"; do
+        local carrier
+        carrier=$(get_interface_carrier "$iface")
         local local_ip
         local_ip=$(get_interface_ip "$iface")
 
-        if [[ -z "$local_ip" ]]; then
+        if [[ -z "$local_ip" || "$carrier" -eq 0 ]]; then
             # Interface inactive / disconnected
             CONNECTIVITY_RESULT="DOWN"
             CONNECTIVITY_LATENCY=-1
@@ -175,12 +203,30 @@ main() {
         fi
 
         # Check for state change to determine whether to write to persistent log
-        if detect_state_change "$iface" "$CONNECTIVITY_RESULT" "$DNS_OK_RESULT"; then
+        if [[ "$LOG_TO_FILE" == "true" && "$REDUCE_DISK_WEAR" == "true" ]]; then
+            # In reduce-disk-wear daemon mode, only write state transitions to disk
+            if detect_state_change "$iface" "$CONNECTIVITY_RESULT" "$DNS_OK_RESULT"; then
+                if [[ "$CONNECTIVITY_RESULT" == "OK" && "$DNS_OK_RESULT" == "true" ]]; then
+                    log "[$iface] OK"
+                else
+                    log "[$iface] DOWN"
+                fi
+            fi
+        else
+            # Standard mode or manual run: always output state
             if [[ "$CONNECTIVITY_RESULT" == "OK" && "$DNS_OK_RESULT" == "true" ]]; then
                 log "[$iface] OK"
             else
                 log "[$iface] DOWN"
             fi
+        fi
+
+        # Pretty terminal display
+        if [[ "$OUTPUT_FORMAT" == "pretty" ]]; then
+            print_pretty_interface "$iface" "$local_ip" "$carrier" \
+                "$CONNECTIVITY_RESULT" "$CONNECTIVITY_LATENCY" "$CONNECTIVITY_LOSS" \
+                "$PIHOLE_OK" "$PIHOLE_LATENCY" "$DNSCRYPT_OK" "$DNSCRYPT_LATENCY" \
+                "$CLOUDFLARE_OK" "$CLOUDFLARE_LATENCY" "$detected_upstream" "$DNS_OK_RESULT"
         fi
 
         # Update stateless RAM history buffer
@@ -554,4 +600,6 @@ print(json.dumps(incidents))
 ' 2>/dev/null || echo '[]'
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    main "$@"
+fi
