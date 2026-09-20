@@ -1,6 +1,6 @@
 # Internet Health Check 2.0
 
-A modular, lightweight Bash suite for monitoring internet connectivity and DNS chain health on Linux and Raspberry Pi OS. Features a native **Pi-hole v6 AdminLTE** web dashboard, zero-disk-wear RAM state tracking, interactive 72-hour historical SLA grid, auto dark/light theme switching, floating root-cause diagnostics tooltips, and real-time CLI diagnostics.
+A modular, lightweight Bash suite for monitoring internet connectivity and DNS chain health on Linux, Raspberry Pi OS, and macOS. Features a native **Pi-hole v6 AdminLTE** web dashboard, zero-disk-wear RAM state tracking, interactive 72-hour historical SLA grid, auto dark/light theme switching, floating root-cause diagnostics tooltips, and real-time CLI diagnostics.
 
 [![Version v2.0.0](https://img.shields.io/badge/version-2.0.0-blue.svg)](https://github.com/psinx/InternetHealthCheck/releases/tag/v2.0.0)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -15,6 +15,9 @@ A modular, lightweight Bash suite for monitoring internet connectivity and DNS c
 
 # Run check with standard log lines to stdout
 ./internet_health_check.sh --format log
+
+# Run on macOS client monitoring LAN Pi-hole server
+./internet_health_check.sh --pihole-host 192.168.1.2 --skip-dnscrypt
 
 # Run health check with Pi-hole v6 HTML dashboard & RAM-based disk-wear protection
 ./internet_health_check.sh --log-file logs/internet_health.log --reduce-disk-wear --html-file /var/www/html/health.html
@@ -34,7 +37,7 @@ A modular, lightweight Bash suite for monitoring internet connectivity and DNS c
 
 * **72-Hour Historical SLA Grid & Floating Tooltips**:
   * Chronological 3-row uptime grid (*2 Days Ago*, *Yesterday*, *Today*) with local clock hour mapping.
-  * **● STATUS: Operational** and **● SLA: XX.XX%** status badges with dynamic threshold color coding (Green ≥ 99.0%, Orange 95.0%–98.99%, Red < 95.0%).
+  * **● STATUS: Healthy** and **● SLA: XX.XX%** status badges with dynamic threshold color coding (Green ≥ 99.0%, Orange 95.0%–98.99%, Red < 95.0%).
   * **Floating Interactive Tooltips**: Hover over grid cells to inspect graphical mini DNS chain flows (`Client -> Pi-hole -> dnscrypt-proxy -> Cloudflare`), root-cause component failure state (`OK` vs `FAIL`), and affected network interface breakdown (`eth0`, `wlan0`).
 
 * **Smart Multi-Interface & Maintenance Window Tolerance**:
@@ -82,18 +85,36 @@ Usage: ./internet_health_check.sh [OPTIONS]
 
 Options:
   --log-file FILE       Write logs to FILE instead of stdout.
-  --reduce-disk-wear    Reduce log writes: store rolling history in RAM (/dev/shm/),
+  --reduce-disk-wear    Reduce log writes: store rolling history in RAM (/dev/shm/ or /tmp),
                         only write state changes or outages to disk log.
   --format FORMAT       Output format: 'pretty' (visual checklist) or 'log' (syslog style).
                         Defaults to 'pretty' in interactive terminals, 'log' when piped/cron.
   --pretty              Shortcut for --format pretty.
   --log-format          Shortcut for --format log.
   --html-file FILE      Generate a Pi-hole v6 style HTML status dashboard at FILE.
-  --interfaces IFACES   Comma-separated list of interfaces (e.g., "eth0,wlan0").
+  --interfaces IFACES   Comma-separated list of interfaces (e.g., "eth0,wlan0" or "en0").
                         Defaults to auto-detecting all active interfaces.
-  --upstream-dns IP     Override upstream DNS IP for resolution testing.
+  --upstream-dns IP     Override upstream DNS IP for resolution testing (default: 1.1.1.3).
+  --pihole-host HOST    Pi-hole host/IP to query (default: 127.0.0.1 on Linux, LAN IP on Mac).
+  --dnscrypt-host HOST  dnscrypt-proxy host/IP to query (default: 127.0.0.1).
+  --skip-dnscrypt       Skip dnscrypt-proxy hop (ideal for client-side Mac checks).
   -h, --help            Show this help message.
 ```
+
+---
+
+## 🍏 macOS Compatibility & Client Mode
+
+The suite runs natively on **macOS (Darwin)** without requiring third-party package managers:
+
+* **Zero Extra Dependencies**: macOS includes `ping`, `dig`, `ifconfig`, and `scutil` out-of-the-box.
+* **BSD Ping Adaptation**: Automatically detects Darwin and uses `-W <ms>` (milliseconds timeout) and `-S <source_ip>` (unicast source binding), avoiding the standard Linux `-I` and seconds-timeout packet drops.
+* **RAM State Fallback**: When `/dev/shm` is not mounted (standard macOS behavior), rolling RAM history transparently falls back to `/tmp/internet_health_history.txt`.
+* **Interface Filtering**: Filters out dormant virtual interfaces (e.g., inactive Thunderbolt bridges `en1`–`en6`), inspecting only links with assigned IP addresses (typically `en0` for Wi-Fi).
+* **Client Mode**: When run on a Mac workstation, the script can auto-discover your local router or Pi-hole DNS server via `scutil --dns` or point explicitly to your Pi-hole host:
+  ```bash
+  ./internet_health_check.sh --pihole-host 192.168.1.2 --skip-dnscrypt
+  ```
 
 ---
 
@@ -122,7 +143,7 @@ Interface: eth0
 ## 🛡️ Raspberry Pi & SD Card Optimization (`--reduce-disk-wear`)
 
 When running via `cron` (e.g. every 5 minutes), the `--reduce-disk-wear` flag:
-1. Writes high-frequency status updates to RAM (`/dev/shm/internet_health_history.txt`).
+1. Writes high-frequency status updates to RAM (`/dev/shm/internet_health_history.txt` on Linux, `/tmp/` on macOS).
 2. Suppresses redundant `OK` disk log entries while connectivity remains healthy.
 3. Automatically triggers an immediate disk write and syslog alert upon **state changes** (e.g. `OK` ➔ `OUTAGE` or `OUTAGE` ➔ `OK`).
 4. Logs a 24-hour heartbeat to preserve long-term historical records across reboots.
@@ -137,7 +158,7 @@ Run the automated unit and integration test suite:
 ./tests/test_internet_health_check.sh
 ```
 
-**Results:** ✅ 18 tests passed (100% pass rate)
+**Results:** ✅ 19 test scenarios / 24 assertions passed (100% pass rate)
 
 ---
 

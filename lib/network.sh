@@ -87,10 +87,21 @@ detect_upstream_dns() {
 # Perform ICMP ping connectivity check, parsing packet loss and average latency
 check_connectivity() {
     local interface=$1
+    local local_ip=${2:-$(get_interface_ip "$interface")}
     
     # Run ping
     local ping_out
-    ping_out=$(ping -I "$interface" -c "$PING_COUNT" -W "$PING_TIMEOUT" "$PING_TARGET" 2>&1)
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        # On macOS BSD ping, -W takes milliseconds, and -S binds source IP
+        local timeout_ms=$(( PING_TIMEOUT * 1000 ))
+        if [[ -n "$local_ip" ]]; then
+            ping_out=$(ping -S "$local_ip" -c "$PING_COUNT" -W "$timeout_ms" "$PING_TARGET" 2>&1)
+        else
+            ping_out=$(ping -c "$PING_COUNT" -W "$timeout_ms" "$PING_TARGET" 2>&1)
+        fi
+    else
+        ping_out=$(ping -I "$interface" -c "$PING_COUNT" -W "$PING_TIMEOUT" "$PING_TARGET" 2>&1)
+    fi
     local exit_status=$?
     
     if (( exit_status == 0 )); then
@@ -98,7 +109,7 @@ check_connectivity() {
         # Parse average latency (format: rtt min/avg/max/mdev = 11.23/12.45/...)
         local latency
         latency=$(echo "$ping_out" | grep -oE 'rtt min/avg/max/mdev = [0-9.]*/[0-9.]*' | cut -d/ -f5)
-        # Fallback if parsing fails
+        # Fallback if parsing fails (macOS format: round-trip min/avg/max/stddev = 11.23/12.45/...)
         [[ -z "$latency" ]] && latency=$(echo "$ping_out" | grep -oE 'round-trip min/avg/max/stddev = [0-9.]*/[0-9.]*' | cut -d/ -f5)
         CONNECTIVITY_LATENCY=${latency:-0}
         
@@ -153,18 +164,26 @@ check_dns_chain() {
     CLOUDFLARE_OK=false
     CLOUDFLARE_LATENCY=-1
     
+    # Target hosts (support custom/remote Pi-hole and dnscrypt hosts)
+    local pi_host="${PIHOLE_HOST:-127.0.0.1}"
+    local dc_host="${DNSCRYPT_HOST:-127.0.0.1}"
+    local skip_dc="${SKIP_DNSCRYPT:-false}"
+
     # Detect configured upstream DNS server (e.g. 1.1.1.3 or 1.1.1.1)
     local upstream_ip
     upstream_ip=$(detect_upstream_dns "${UPSTREAM_DNS:-}")
     
-    # 1. Pi-hole Check (127.0.0.1 on port 53)
-    if check_dns "$interface" "127.0.0.1" "$PIHOLE_PORT" "$local_ip"; then
+    # 1. Pi-hole Check
+    if check_dns "$interface" "$pi_host" "$PIHOLE_PORT" "$local_ip"; then
         PIHOLE_OK="$DNS_SUCCESS"
         PIHOLE_LATENCY="$DNS_LATENCY"
     fi
     
-    # 2. dnscrypt-proxy Check (127.0.0.1 on port 5053)
-    if check_dns "$interface" "127.0.0.1" "$DNSCRYPT_PORT" "$local_ip"; then
+    # 2. dnscrypt-proxy Check (can be skipped in client mode)
+    if [[ "$skip_dc" == "true" ]]; then
+        DNSCRYPT_OK="true"
+        DNSCRYPT_LATENCY=0
+    elif check_dns "$interface" "$dc_host" "$DNSCRYPT_PORT" "$local_ip"; then
         DNSCRYPT_OK="$DNS_SUCCESS"
         DNSCRYPT_LATENCY="$DNS_LATENCY"
     fi
@@ -176,7 +195,7 @@ check_dns_chain() {
     fi
     
     # Aggregate DNS status
-    if [[ "$PIHOLE_OK" == "true" && "$DNSCRYPT_OK" == "true" && "$CLOUDFLARE_OK" == "true" ]]; then
+    if [[ "$PIHOLE_OK" == "true" && "$CLOUDFLARE_OK" == "true" ]] && [[ "$skip_dc" == "true" || "$DNSCRYPT_OK" == "true" ]]; then
         DNS_OK_RESULT="true"
     else
         DNS_OK_RESULT="false"
@@ -196,11 +215,15 @@ log_dns_results() {
     local interface=$1 pihole_ok=$2 dnscrypt_ok=$3 cloudflare_ok=$4 upstream_ip=${5:-"1.1.1.1"}
     local upstream_name="Cloudflare"
     [[ "$upstream_ip" != 1.1.1.* && "$upstream_ip" != 1.0.0.* ]] && upstream_name="Upstream"
+    local pi_host="${PIHOLE_HOST:-127.0.0.1}"
+    local dc_host="${DNSCRYPT_HOST:-127.0.0.1}"
 
-    [[ "$pihole_ok" == "false" ]] && log "[$interface] Test: Fail via Pi-hole (127.0.0.1:$PIHOLE_PORT)"
-    [[ "$pihole_ok" == "true" ]]  && log "[$interface] Test: Pass via Pi-hole (127.0.0.1:$PIHOLE_PORT)"
-    [[ "$dnscrypt_ok" == "false" ]] && log "[$interface] Test: Fail via dnscrypt-proxy (127.0.0.1:${DNSCRYPT_PORT})"
-    [[ "$dnscrypt_ok" == "true" ]]  && log "[$interface] Test: Pass via dnscrypt-proxy (127.0.0.1:${DNSCRYPT_PORT})"
+    [[ "$pihole_ok" == "false" ]] && log "[$interface] Test: Fail via Pi-hole ($pi_host:$PIHOLE_PORT)"
+    [[ "$pihole_ok" == "true" ]]  && log "[$interface] Test: Pass via Pi-hole ($pi_host:$PIHOLE_PORT)"
+    if [[ "${SKIP_DNSCRYPT:-false}" != "true" ]]; then
+        [[ "$dnscrypt_ok" == "false" ]] && log "[$interface] Test: Fail via dnscrypt-proxy ($dc_host:${DNSCRYPT_PORT})"
+        [[ "$dnscrypt_ok" == "true" ]]  && log "[$interface] Test: Pass via dnscrypt-proxy ($dc_host:${DNSCRYPT_PORT})"
+    fi
     [[ "$cloudflare_ok" == "false" ]] && log "[$interface] Test: Fail via $upstream_name ($upstream_ip:53)"
     [[ "$cloudflare_ok" == "true" ]]  && log "[$interface] Test: Pass via $upstream_name ($upstream_ip:53)"
 }
@@ -209,7 +232,7 @@ determine_failure_point() {
     local pihole_ok=$1 dnscrypt_ok=$2 cloudflare_ok=$3
     if [[ "$pihole_ok" == "false" && "$dnscrypt_ok" == "true" ]]; then
         echo "Pi-hole"
-    elif [[ "$dnscrypt_ok" == "false" && "$cloudflare_ok" == "true" ]]; then
+    elif [[ "${SKIP_DNSCRYPT:-false}" != "true" && "$dnscrypt_ok" == "false" && "$cloudflare_ok" == "true" ]]; then
         echo "dnscrypt-proxy"
     elif [[ "$cloudflare_ok" == "false" ]]; then
         echo "Cloudflare"

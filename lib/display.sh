@@ -56,16 +56,21 @@ print_pretty_interface() {
 
     # 4. DNS Chain Resolution
     echo -e "  \e[1m4. DNS Chain Resolution:\e[0m"
+    local pi_host="${PIHOLE_HOST:-127.0.0.1}"
+    local dc_host="${DNSCRYPT_HOST:-127.0.0.1}"
+
     if [[ "$pi_ok" == "true" ]]; then
-        echo -e "     \e[32m✓\e[0m Hop 1 (Pi-hole @127.0.0.1:$PIHOLE_PORT): \e[32mPASS\e[0m (${pi_lat}ms)"
+        echo -e "     \e[32m✓\e[0m Hop 1 (Pi-hole @$pi_host:$PIHOLE_PORT): \e[32mPASS\e[0m (${pi_lat}ms)"
     else
-        echo -e "     \e[31m✗\e[0m Hop 1 (Pi-hole @127.0.0.1:$PIHOLE_PORT): \e[31mFAIL\e[0m"
+        echo -e "     \e[31m✗\e[0m Hop 1 (Pi-hole @$pi_host:$PIHOLE_PORT): \e[31mFAIL\e[0m"
     fi
 
-    if [[ "$dc_ok" == "true" ]]; then
-        echo -e "     \e[32m✓\e[0m Hop 2 (dnscrypt-proxy @127.0.0.1:$DNSCRYPT_PORT): \e[32mPASS\e[0m (${dc_lat}ms)"
+    if [[ "${SKIP_DNSCRYPT:-false}" == "true" ]]; then
+        echo -e "     \e[90m- Hop 2 (dnscrypt-proxy): SKIPPED (Client Mode)\e[0m"
+    elif [[ "$dc_ok" == "true" ]]; then
+        echo -e "     \e[32m✓\e[0m Hop 2 (dnscrypt-proxy @$dc_host:$DNSCRYPT_PORT): \e[32mPASS\e[0m (${dc_lat}ms)"
     else
-        echo -e "     \e[31m✗\e[0m Hop 2 (dnscrypt-proxy @127.0.0.1:$DNSCRYPT_PORT): \e[31mFAIL\e[0m"
+        echo -e "     \e[31m✗\e[0m Hop 2 (dnscrypt-proxy @$dc_host:$DNSCRYPT_PORT): \e[31mFAIL\e[0m"
     fi
 
     local upstream_name="Upstream"
@@ -87,11 +92,11 @@ print_pretty_interface() {
             echo -e "     \e[90m└─ Root cause: Gateway or WAN connection unreachable (100% packet loss to $PING_TARGET).\e[0m"
         fi
         if [[ "$pi_ok" == "false" && "$dc_ok" == "true" ]]; then
-            echo -e "     \e[1;33m[!] Pi-hole Local Server Failure\e[0m"
-            echo -e "     \e[90m└─ Root cause: Pi-hole is not running or port 53 is blocked.\e[0m"
-        elif [[ "$dc_ok" == "false" && "$cf_ok" == "true" ]]; then
+            echo -e "     \e[1;33m[!] Pi-hole Server Failure\e[0m"
+            echo -e "     \e[90m└─ Root cause: Pi-hole is not reachable at $pi_host:$PIHOLE_PORT.\e[0m"
+        elif [[ "${SKIP_DNSCRYPT:-false}" != "true" && "$dc_ok" == "false" && "$cf_ok" == "true" ]]; then
             echo -e "     \e[1;33m[!] dnscrypt-proxy Upstream Resolver Failure\e[0m"
-            echo -e "     \e[90m└─ Root cause: dnscrypt-proxy daemon crashed or port 5053 is down.\e[0m"
+            echo -e "     \e[90m└─ Root cause: dnscrypt-proxy daemon crashed or port $DNSCRYPT_PORT is down.\e[0m"
         elif [[ "$cf_ok" == "false" ]]; then
             echo -e "     \e[1;33m[!] External Upstream DNS Outage\e[0m"
             echo -e "     \e[90m└─ Root cause: Upstream DNS ($upstream_ip) unreachable or dropping queries.\e[0m"

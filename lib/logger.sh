@@ -2,7 +2,9 @@
 
 # lib/logger.sh - Logging and state database management
 
-RAM_STATE_FILE="${RAM_STATE_FILE:-/dev/shm/internet_health_history.txt}"
+DEFAULT_RAM_DIR="/dev/shm"
+[[ ! -d "/dev/shm" ]] && DEFAULT_RAM_DIR="/tmp"
+RAM_STATE_FILE="${RAM_STATE_FILE:-${DEFAULT_RAM_DIR}/internet_health_history.txt}"
 readonly RAM_STATE_FILE
 readonly MAX_RAM_LINES=8640 # 30 days of 5-minute runs (30 * 24 * 12)
 
@@ -46,7 +48,9 @@ record_run() {
     timestamp=$(date +%s)
     
     # Create logs directory in RAM if needed
-    mkdir -p "/dev/shm" 2>/dev/null
+    local ram_dir
+    ram_dir=$(dirname "$RAM_STATE_FILE")
+    mkdir -p "$ram_dir" 2>/dev/null
     
     # Append CSV line to RAM file
     # Format: timestamp,interface,connectivity,dns_ok,pihole_ok,dnscrypt_ok,cloudflare_ok,pihole_lat,dnscrypt_lat,cf_lat,loss
@@ -55,7 +59,7 @@ record_run() {
     # Prune history to limit size
     if [[ -f "$RAM_STATE_FILE" ]]; then
         # Use tail to keep last 8640 lines in RAM
-        local temp_file="/dev/shm/ih_tmp.$$"
+        local temp_file="${ram_dir}/ih_tmp.$$"
         tail -n "$MAX_RAM_LINES" "$RAM_STATE_FILE" > "$temp_file" 2>/dev/null && mv -f "$temp_file" "$RAM_STATE_FILE"
     fi
 }

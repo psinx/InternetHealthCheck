@@ -27,7 +27,15 @@ HTML_FILE=""
 INTERFACE_OVERRIDE=""
 UPSTREAM_DNS=""
 OUTPUT_FORMAT=""
+PIHOLE_HOST="${PIHOLE_HOST:-}"
+DNSCRYPT_HOST="${DNSCRYPT_HOST:-}"
+SKIP_DNSCRYPT="${SKIP_DNSCRYPT:-false}"
 TAG="[INTERNET-HEALTH-CHECK]"
+
+# Resolve RAM directory fallback (Linux uses /dev/shm, macOS/BSD uses /tmp)
+DEFAULT_RAM_DIR="/dev/shm"
+[[ ! -d "/dev/shm" ]] && DEFAULT_RAM_DIR="/tmp"
+export RAM_STATE_FILE="${RAM_STATE_FILE:-${DEFAULT_RAM_DIR}/internet_health_history.txt}"
 
 # Resolve script directory and source libraries
 export SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -43,7 +51,7 @@ Usage: $0 [OPTIONS]
 
 Options:
   --log-file FILE       Write logs to FILE instead of stdout
-  --reduce-disk-wear    Reduce log writes: store 30-day logs in RAM (/dev/shm/),
+  --reduce-disk-wear    Reduce log writes: store 30-day logs in RAM (${DEFAULT_RAM_DIR}/),
                         only write state changes/outages to disk log.
   --format FORMAT       Output format: 'pretty' (visual checklist) or 'log' (syslog style).
                         Defaults to 'pretty' in interactive terminals, 'log' when piped/cron.
@@ -52,6 +60,10 @@ Options:
   --html-file FILE      Generate a beautiful Pi-hole v6 style HTML status dashboard at FILE.
   --interfaces IFACES   Comma-separated list of interfaces to monitor (e.g. eth0,wlan0).
                         Defaults to auto-detecting all active interfaces.
+  --pihole-host HOST    Pi-hole server IP/hostname to test (defaults to 127.0.0.1 on server,
+                        or auto-discovered system nameserver on macOS clients).
+  --dnscrypt-host HOST  dnscrypt-proxy host to test (defaults to 127.0.0.1).
+  --skip-dnscrypt       Skip Hop 2 dnscrypt check (useful for client machines on LAN).
   --upstream-dns IP     Specify upstream DNS server IP to query (e.g. 1.1.1.3).
                         Defaults to auto-detecting server_names from /etc/dnscrypt-proxy/dnscrypt-proxy.toml.
   -h, --help            Show this help message
@@ -63,6 +75,9 @@ Examples:
   # Output standard log lines to stdout
   ./internet_health_check.sh --format log
 
+  # Run on a Mac client pointing to Pi-hole on LAN
+  ./internet_health_check.sh --pihole-host 192.168.1.2 --skip-dnscrypt
+
   # Run daemon in cron, writing to RAM and logging transition alerts to disk
   ./internet_health_check.sh --log-file logs/health.log --reduce-disk-wear --html-file /var/www/html/health/index.html
 EOF
@@ -71,8 +86,18 @@ EOF
 # Auto-discover active network interfaces
 discover_interfaces() {
     if [[ "$OSTYPE" == "darwin"* ]]; then
-        # On macOS, search for active Ethernet (en) links
-        ifconfig -l 2>/dev/null | tr ' ' '\n' | grep -E '^en|^eth' || echo "en0"
+        # On macOS, search for active Ethernet / Wi-Fi links with an assigned IPv4 address
+        local active_ifaces=()
+        for iface in $(ifconfig -l 2>/dev/null | tr ' ' '\n' | grep -E '^en|^bridge'); do
+            if ifconfig "$iface" 2>/dev/null | grep -q 'inet '; then
+                active_ifaces+=("$iface")
+            fi
+        done
+        if (( ${#active_ifaces[@]} > 0 )); then
+            printf '%s\n' "${active_ifaces[@]}"
+        else
+            echo "en0"
+        fi
     elif command -v ip >/dev/null 2>&1; then
         # On Linux, list physical interfaces excluding local loops, bridges, and docker
         ip -o link show 2>/dev/null | awk -F': ' '{print $2}' | grep -vE 'lo|docker|veth|br-' || echo "eth0"
@@ -118,6 +143,19 @@ main() {
                 INTERFACE_OVERRIDE="$2"
                 shift 2
                 ;;
+            --pihole-host)
+                PIHOLE_HOST="$2"
+                shift 2
+                ;;
+            --dnscrypt-host)
+                DNSCRYPT_HOST="$2"
+                DNSCRYPT_HOST_SPECIFIED=true
+                shift 2
+                ;;
+            --skip-dnscrypt)
+                SKIP_DNSCRYPT=true
+                shift
+                ;;
             --upstream-dns)
                 UPSTREAM_DNS="$2"
                 shift 2
@@ -133,6 +171,34 @@ main() {
                 ;;
         esac
     done
+
+    # Resolve target DNS hosts (defaults to 127.0.0.1 on Linux, auto-detects LAN resolver on macOS)
+    if [[ -z "$PIHOLE_HOST" ]]; then
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            if command -v nc >/dev/null 2>&1 && nc -z -w1 127.0.0.1 53 >/dev/null 2>&1; then
+                PIHOLE_HOST="127.0.0.1"
+            else
+                local sys_dns=""
+                if command -v scutil >/dev/null 2>&1; then
+                    sys_dns=$(scutil --dns 2>/dev/null | grep 'nameserver\[0\]' | head -n1 | awk '{print $3}')
+                fi
+                [[ -z "$sys_dns" && -f "/etc/resolv.conf" ]] && sys_dns=$(grep -E '^nameserver' /etc/resolv.conf 2>/dev/null | head -n1 | awk '{print $2}')
+                PIHOLE_HOST="${sys_dns:-127.0.0.1}"
+            fi
+        else
+            PIHOLE_HOST="127.0.0.1"
+        fi
+    fi
+    export PIHOLE_HOST
+
+    DNSCRYPT_HOST="${DNSCRYPT_HOST:-127.0.0.1}"
+    export DNSCRYPT_HOST
+
+    # In Client mode on macOS, if Pi-hole is remote and dnscrypt was not specified, auto-skip dnscrypt
+    if [[ "$OSTYPE" == "darwin"* && "$PIHOLE_HOST" != "127.0.0.1" && "${DNSCRYPT_HOST_SPECIFIED:-false}" != "true" ]]; then
+        SKIP_DNSCRYPT=true
+    fi
+    export SKIP_DNSCRYPT
 
     # Default output format: pretty when attached to a TTY, log otherwise
     if [[ -z "$OUTPUT_FORMAT" ]]; then
@@ -329,7 +395,7 @@ build_72h_history_json() {
 import os, json, time
 from datetime import datetime, timedelta
 
-ram_file = os.environ.get("RAM_STATE_FILE", "/dev/shm/internet_health_history.txt")
+ram_file = os.environ.get("RAM_STATE_FILE") or ("/tmp/internet_health_history.txt" if not os.path.exists("/dev/shm") else "/dev/shm/internet_health_history.txt")
 log_file = os.environ.get("LOG_FILE", "")
 
 hours_status = {"Today": ["OK"]*24, "Yesterday": ["OK"]*24, "2 Days Ago": ["OK"]*24}
@@ -469,7 +535,7 @@ calculate_sla_percentage() {
 import os, json, time
 from datetime import datetime
 
-ram_file = os.environ.get("RAM_STATE_FILE", "/dev/shm/internet_health_history.txt")
+ram_file = os.environ.get("RAM_STATE_FILE") or ("/tmp/internet_health_history.txt" if not os.path.exists("/dev/shm") else "/dev/shm/internet_health_history.txt")
 log_file = os.environ.get("LOG_FILE", "")
 
 hours_status = {"Today": ["OK"]*24, "Yesterday": ["OK"]*24, "2 Days Ago": ["OK"]*24}
@@ -556,7 +622,7 @@ extract_incidents_json() {
 import os, json, time
 from datetime import datetime
 
-ram_file = os.environ.get("RAM_STATE_FILE", "/dev/shm/internet_health_history.txt")
+ram_file = os.environ.get("RAM_STATE_FILE") or ("/tmp/internet_health_history.txt" if not os.path.exists("/dev/shm") else "/dev/shm/internet_health_history.txt")
 log_file = os.environ.get("LOG_FILE", "")
 incidents = []
 seen_events = set()
