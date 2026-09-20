@@ -274,6 +274,8 @@ generate_status_json() {
     mkdir -p "$target_dir" 2>/dev/null
 
     local json_target="$target_dir/status.json"
+    local json_tmp="${json_target}.tmp.$$"
+    export SCRIPT_DIR="$SCRIPT_DIR"
 
     # Calculate overall system health based on current live interface connectivity
     local system_status="Healthy"
@@ -293,7 +295,7 @@ generate_status_json() {
     local incidents_json
     incidents_json=$(extract_incidents_json)
 
-    cat << EOF > "$json_target"
+    cat << EOF > "$json_tmp"
 {
   "timestamp": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
   "status": "$system_status",
@@ -305,6 +307,8 @@ $ifaces_json
   "incidents": $incidents_json
 }
 EOF
+    mv -f "$json_tmp" "$json_target" 2>/dev/null || cat "$json_tmp" > "$json_target"
+    rm -f "$json_tmp" 2>/dev/null || true
 
     # If output_target is an HTML file, copy index.html & app.js templates alongside status.json
     if [[ "$output_target" == *.html ]]; then
@@ -377,9 +381,21 @@ if os.path.exists(ram_file):
                     pass
 
 # 2. Read Persistent Disk Log (pinpoints exact root-cause failing components)
+candidate_logs = []
 if log_file and os.path.exists(log_file):
+    candidate_logs.append(log_file)
+script_dir = os.environ.get("SCRIPT_DIR", "")
+if script_dir:
+    default_log = os.path.join(script_dir, "logs", "internet_health.log")
+    if os.path.exists(default_log) and default_log not in candidate_logs:
+        candidate_logs.append(default_log)
+for path in ["/home/prateek/InternetHealthCheck/logs/internet_health.log", "/var/log/internet_health.log"]:
+    if os.path.exists(path) and path not in candidate_logs:
+        candidate_logs.append(path)
+
+for c_log in candidate_logs:
     try:
-        with open(log_file, "r") as f:
+        with open(c_log, "r") as f:
             for line in f:
                 if "[INTERNET-HEALTH-CHECK]" in line:
                     parts = line.strip().split()
@@ -485,9 +501,21 @@ if ram_file and os.path.exists(ram_file):
     except Exception:
         pass
 
+candidate_logs = []
 if log_file and os.path.exists(log_file):
+    candidate_logs.append(log_file)
+script_dir = os.environ.get("SCRIPT_DIR", "")
+if script_dir:
+    default_log = os.path.join(script_dir, "logs", "internet_health.log")
+    if os.path.exists(default_log) and default_log not in candidate_logs:
+        candidate_logs.append(default_log)
+for path in ["/home/prateek/InternetHealthCheck/logs/internet_health.log", "/var/log/internet_health.log"]:
+    if os.path.exists(path) and path not in candidate_logs:
+        candidate_logs.append(path)
+
+for c_log in candidate_logs:
     try:
-        with open(log_file, "r") as f:
+        with open(c_log, "r") as f:
             for line in f:
                 if "[INTERNET-HEALTH-CHECK]" in line:
                     parts = line.strip().split()
@@ -534,9 +562,21 @@ now = time.time()
 max_age_seconds = 72 * 3600 # Strictly last 72 hours (259,200 seconds)
 
 # Parse persistent disk log first for reboot survival (strictly last 72 hours)
+candidate_logs = []
 if log_file and os.path.exists(log_file):
+    candidate_logs.append(log_file)
+script_dir = os.environ.get("SCRIPT_DIR", "")
+if script_dir:
+    default_log = os.path.join(script_dir, "logs", "internet_health.log")
+    if os.path.exists(default_log) and default_log not in candidate_logs:
+        candidate_logs.append(default_log)
+for path in ["/home/prateek/InternetHealthCheck/logs/internet_health.log", "/var/log/internet_health.log"]:
+    if os.path.exists(path) and path not in candidate_logs:
+        candidate_logs.append(path)
+
+for c_log in candidate_logs:
     try:
-        with open(log_file, "r") as f:
+        with open(c_log, "r") as f:
             lines = f.readlines()
         for line in reversed(lines):
             if "[INTERNET-HEALTH-CHECK]" in line and "DOWN" in line:
