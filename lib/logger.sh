@@ -163,27 +163,32 @@ generate_status_json() {
     local one_hour=3600
     local one_day=86400
     
+    local day_start
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        day_start=$(date -j -f "%Y-%m-%d" "$(date +%Y-%m-%d)" +%s 2>/dev/null)
+    else
+        day_start=$(date -d "today 00:00:00" +%s 2>/dev/null)
+    fi
+
     # Compile 72 hours grid (Today, Yesterday, 2 Days Ago)
     local labels=("2 Days Ago" "Yesterday" "Today")
     for d in {0..2}; do
         local label="${labels[$d]}"
+        local target_day_start=$(( day_start - (2 - d) * one_day ))
+        local target_date
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            target_date=$(date -r "$target_day_start" "+%-d %b" 2>/dev/null)
+        else
+            target_date=$(date -d "@$target_day_start" "+%-d %b" 2>/dev/null)
+        fi
         [[ $d -gt 0 ]] && history_json+=","
-        history_json+="{\"label\":\"$label\",\"hours\":["
+        history_json+="{\"label\":\"$label\",\"date\":\"$target_date\",\"hours\":["
         
         # Hours from 0 to 23
         for h in {0..23}; do
             [[ $h -gt 0 ]] && history_json+=","
             
             # Determine timestamp range for this specific hour
-            # We map Today, Yesterday, and 2 Days Ago relative to the start of today
-            local day_start
-            if [[ "$OSTYPE" == "darwin"* ]]; then
-                day_start=$(date -j -f "%Y-%m-%d" "$(date +%Y-%m-%d)" +%s 2>/dev/null)
-            else
-                day_start=$(date -d "today 00:00:00" +%s 2>/dev/null)
-            fi
-            
-            local target_day_start=$(( day_start - (2 - d) * one_day ))
             local hour_start=$(( target_day_start + h * one_hour ))
             local hour_end=$(( hour_start + one_hour ))
             

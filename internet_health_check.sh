@@ -321,7 +321,7 @@ build_72h_history_json() {
     # Combine RAM history file and persistent disk log for exact local clock hour mapping and root-cause node health
     python3 -c '
 import os, json, time
-from datetime import datetime
+from datetime import datetime, timedelta
 
 ram_file = os.environ.get("RAM_STATE_FILE", "/dev/shm/internet_health_history.txt")
 log_file = os.environ.get("LOG_FILE", "")
@@ -420,7 +420,9 @@ if log_file and os.path.exists(log_file):
         pass
 
 result = []
-for label in ["2 Days Ago", "Yesterday", "Today"]:
+for days_ago, label in [(2, "2 Days Ago"), (1, "Yesterday"), (0, "Today")]:
+    target_dt = now_dt - timedelta(days=days_ago)
+    date_str = target_dt.strftime("%-d %b")
     day_cells = []
     for h in range(24):
         st = hours_status[label][h]
@@ -438,7 +440,7 @@ for label in ["2 Days Ago", "Yesterday", "Today"]:
             "dnscrypt": nodes["dns"],
             "cloudflare": nodes["cf"]
         })
-    result.append({"label": label, "hours": day_cells})
+    result.append({"label": label, "date": date_str, "hours": day_cells})
 
 print(json.dumps(result))
 ' 2>/dev/null || echo '[{"label":"2 Days Ago","hours":[]},{"label":"Yesterday","hours":[]},{"label":"Today","hours":[]}]'
