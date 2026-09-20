@@ -1,6 +1,56 @@
 <?
 mg.include("scripts/lua/header.lp","r")
 ?>
+    <style>
+        /* 72h Uptime Grid Styling */
+        .grid-row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+        .row-label { width: 100px; font-weight: 600; opacity: 0.8; font-size: 0.95em; }
+        .row-cells { display: flex; gap: 3px; flex-grow: 1; position: relative; }
+        
+        .hour-cell { 
+            flex: 1; 
+            height: 26px; 
+            background-color: #d2d6de; 
+            opacity: 0.7;
+            border-radius: 3px; 
+            transition: transform 0.15s, box-shadow 0.15s, background-color 0.2s, opacity 0.2s; 
+            position: relative;
+            cursor: pointer;
+        }
+        .hour-cell:hover { 
+            transform: scaleY(1.35); 
+            z-index: 10;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+        }
+        .hour-cell.hour-ok { background-color: #00a65a; opacity: 1; }
+        .hour-cell.hour-warning { background-color: #f39c12; opacity: 1; }
+        .hour-cell.hour-danger { background-color: #dd4b39; opacity: 1; }
+        .hour-cell.hour-inactive { background-color: #d2d6de; opacity: 0.7; }
+
+        @media (prefers-color-scheme: dark) {
+            .hour-cell { background-color: #4b646f; opacity: 0.45; }
+            .hour-cell.hour-ok { background-color: #00a65a; opacity: 1; }
+            .hour-cell.hour-warning { background-color: #f39c12; opacity: 1; }
+            .hour-cell.hour-danger { background-color: #dd4b39; opacity: 1; }
+            .hour-cell.hour-inactive { background-color: #4b646f; opacity: 0.45; }
+        }
+
+        /* DNS Chain Node Styling */
+        .chain-flow { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 15px 5px; }
+        .chain-node { border: 2px solid #00a65a; border-radius: 6px; padding: 15px 20px; flex: 1; text-align: center; min-width: 0; }
+        .chain-node.node-fail { border-color: #dd4b39; }
+        .node-name { font-weight: bold; font-size: 1.15em; }
+        .node-status-desc { font-size: 0.88em; opacity: 0.7; font-family: monospace; margin-top: 4px; }
+        .connector-arrow { font-size: 1.5em; color: #00a65a; font-weight: bold; }
+
+        @media (max-width: 767px) {
+            .chain-flow { flex-wrap: wrap; justify-content: center; gap: 8px; }
+            .chain-node { flex: 1 1 40%; padding: 10px 8px; }
+            .connector-arrow { display: none; }
+            .node-name { font-size: 1em; }
+            .node-status-desc { font-size: 0.78em; }
+        }
+    </style>
 </head>
 <body class="<?=theme.name?> hold-transition sidebar-mini <? if pihole.boxedlayout() then ?>layout-boxed<? end ?>">
 <div class="wrapper">
@@ -179,7 +229,7 @@ mg.include("scripts/lua/header.lp","r")
                 container.innerHTML = '';
                 for (let h = 0; h < 24; h++) {
                     const cell = document.createElement('div');
-                    cell.className = 'hour-cell';
+                    cell.className = 'hour-cell hour-inactive';
                     container.appendChild(cell);
                 }
             });
@@ -296,9 +346,10 @@ mg.include("scripts/lua/header.lp","r")
                 row.hours.forEach(hourData => {
                     const cell = document.createElement('div');
                     let cellClass = 'hour-cell';
-                    if (hourData.status === 'WARNING') cellClass += ' hour-warning';
+                    if (hourData.status === 'OK') cellClass += ' hour-ok';
+                    else if (hourData.status === 'WARNING') cellClass += ' hour-warning';
                     else if (hourData.status === 'DANGER') cellClass += ' hour-danger';
-                    else if (hourData.status !== 'OK') cellClass += ' hour-inactive';
+                    else cellClass += ' hour-inactive';
                     cell.className = cellClass;
                     container.appendChild(cell);
                 });
