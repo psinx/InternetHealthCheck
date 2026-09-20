@@ -278,7 +278,7 @@ generate_status_json() {
     local json_tmp="/tmp/status.json.tmp.$$$RANDOM"
 
     # Calculate overall system health based on current live interface connectivity
-    local system_status="Operational"
+    local system_status="Healthy"
     if echo "$ifaces_json" | grep -q '"connectivity": "DOWN"' || echo "$ifaces_json" | grep -q '"dns_ok": false'; then
         system_status="Degraded"
     fi

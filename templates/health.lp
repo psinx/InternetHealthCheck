@@ -120,7 +120,7 @@ mg.include("scripts/lua/header.lp","r")
                 <div class="box-header with-border">
                     <h3 class="box-title"><i class="fas fa-network-wired"></i> Live DNS Chain Diagnostics</h3>
                     <div class="box-tools pull-right">
-                        <span id="header-status-label" class="label label-success" style="font-size: 0.9em;">● STATUS: Operational</span>
+                        <span id="header-status-label" class="label label-success" style="font-size: 0.9em;">● STATUS: Healthy</span>
                     </div>
                 </div>
                 <div class="box-body">
@@ -273,15 +273,15 @@ mg.include("scripts/lua/header.lp","r")
         }
 
         function updateUI(data) {
-            let activeStatus = (data.status === 'Healthy' || data.status === 'Operational') ? 'Operational' : (data.status || 'Operational');
+            let activeStatus = (data.status === 'Operational' || data.status === 'Healthy') ? 'Healthy' : (data.status || 'Healthy');
             if (data.interfaces) {
                 const ethOk = !data.interfaces.eth0 || !data.interfaces.eth0.exists || (data.interfaces.eth0.connectivity === 'OK' && data.interfaces.eth0.dns_ok !== false);
                 const wlanOk = !data.interfaces.wlan0 || !data.interfaces.wlan0.exists || (data.interfaces.wlan0.connectivity === 'OK');
-                activeStatus = (ethOk && wlanOk) ? 'Operational' : 'Degraded';
+                activeStatus = (ethOk && wlanOk) ? 'Healthy' : 'Degraded';
             }
             const headerLabel = document.getElementById('header-status-label');
             if (headerLabel) {
-                headerLabel.className = activeStatus === 'Operational' ? 'label label-success' : 'label label-danger';
+                headerLabel.className = activeStatus === 'Healthy' ? 'label label-success' : 'label label-danger';
                 headerLabel.textContent = '● STATUS: ' + activeStatus;
             }
 
