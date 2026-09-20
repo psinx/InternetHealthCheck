@@ -30,7 +30,8 @@ OUTPUT_FORMAT=""
 TAG="[INTERNET-HEALTH-CHECK]"
 
 # Resolve script directory and source libraries
-readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly SCRIPT_DIR
 source "${SCRIPT_DIR}/lib/network.sh"
 source "${SCRIPT_DIR}/lib/logger.sh"
 source "${SCRIPT_DIR}/lib/display.sh"
@@ -274,11 +275,10 @@ generate_status_json() {
     mkdir -p "$target_dir" 2>/dev/null
 
     local json_target="$target_dir/status.json"
-    local json_tmp="${json_target}.tmp.$$"
-    export SCRIPT_DIR="$SCRIPT_DIR"
+    local json_tmp="/tmp/status.json.tmp.$$$RANDOM"
 
     # Calculate overall system health based on current live interface connectivity
-    local system_status="Healthy"
+    local system_status="Operational"
     if echo "$ifaces_json" | grep -q '"connectivity": "DOWN"' || echo "$ifaces_json" | grep -q '"dns_ok": false'; then
         system_status="Degraded"
     fi
@@ -307,7 +307,9 @@ $ifaces_json
   "incidents": $incidents_json
 }
 EOF
-    mv -f "$json_tmp" "$json_target" 2>/dev/null || cat "$json_tmp" > "$json_target"
+    local real_target
+    real_target=$(realpath "$json_target" 2>/dev/null || echo "$json_target")
+    cp -f "$json_tmp" "$real_target" 2>/dev/null || cat "$json_tmp" > "$real_target" 2>/dev/null || true
     rm -f "$json_tmp" 2>/dev/null || true
 
     # If output_target is an HTML file, copy index.html & app.js templates alongside status.json
