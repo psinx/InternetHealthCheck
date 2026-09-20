@@ -86,9 +86,9 @@ EOF
 # Auto-discover active network interfaces
 discover_interfaces() {
     if [[ "$OSTYPE" == "darwin"* ]]; then
-        # On macOS, search for active Ethernet / Wi-Fi links with an assigned IPv4 address
+        # On macOS, search for active physical Ethernet / Wi-Fi links with an assigned IPv4 address
         local active_ifaces=()
-        for iface in $(ifconfig -l 2>/dev/null | tr ' ' '\n' | grep -E '^en|^bridge'); do
+        for iface in $(ifconfig -l 2>/dev/null | tr ' ' '\n' | grep -E '^en[0-9]+$'); do
             if ifconfig "$iface" 2>/dev/null | grep -q 'inet '; then
                 active_ifaces+=("$iface")
             fi
