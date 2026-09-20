@@ -221,6 +221,28 @@ mg.include("scripts/lua/header.lp","r")
 
 <script>
     (function() {
+        function pad(n) {
+            return n < 10 ? '0' + n : '' + n;
+        }
+
+        function formatHourRange(h) {
+            const start = pad(h) + ':00';
+            const end = pad((h + 1) % 24) + ':00';
+            return start + ' to ' + end;
+        }
+
+        function getDisplayDate(label, dateStr) {
+            if (dateStr) return dateStr;
+            const now = new Date();
+            if (label === 'Yesterday') {
+                now.setDate(now.getDate() - 1);
+            } else if (label === '2 Days Ago') {
+                now.setDate(now.getDate() - 2);
+            }
+            const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            return now.getDate() + ' ' + months[now.getMonth()];
+        }
+
         function renderEmptyGrid() {
             const rows = ['row-today', 'row-yesterday', 'row-2daysago'];
             rows.forEach(rowId => {
@@ -343,6 +365,7 @@ mg.include("scripts/lua/header.lp","r")
                 const container = document.getElementById(containerId);
                 if (!container) return;
                 container.innerHTML = '';
+                const dayLabel = getDisplayDate(row.label, row.date);
                 row.hours.forEach(hourData => {
                     const cell = document.createElement('div');
                     let cellClass = 'hour-cell';
@@ -351,6 +374,8 @@ mg.include("scripts/lua/header.lp","r")
                     else if (hourData.status === 'DANGER') cellClass += ' hour-danger';
                     else cellClass += ' hour-inactive';
                     cell.className = cellClass;
+                    const timeRange = formatHourRange(hourData.hour);
+                    cell.title = dayLabel + ' ' + timeRange + ' (' + (hourData.status === 'OK' ? '100% Operational' : hourData.status) + ')';
                     container.appendChild(cell);
                 });
             });
