@@ -314,6 +314,7 @@ mg.include("scripts/lua/header.lp","r")
             }
 
             if (data.history) renderHistoricalGrid(data.history);
+            if (data.incidents) renderIncidentsList(data.incidents);
 
             if (data.sla_percentage !== undefined) {
                 const slaEl = document.getElementById('grid-uptime-pct');
@@ -381,6 +382,27 @@ mg.include("scripts/lua/header.lp","r")
             });
         }
 
+        function renderIncidentsList(incidents) {
+            const container = document.getElementById('incident-list');
+            if (!container) return;
+            if (!incidents || incidents.length === 0) {
+                container.innerHTML = '<div class="text-center text-muted" style="padding: 10px;">No incidents logged in the last 72 hours.</div>';
+                return;
+            }
+            container.innerHTML = '';
+            incidents.forEach(item => {
+                const row = document.createElement('div');
+                row.style.cssText = 'padding: 8px 10px; border-bottom: 1px dashed rgba(128,128,128,0.3); font-size: 0.95em;';
+                const badgeClass = item.badge === 'Outage' ? 'label label-danger' : 'label label-warning';
+                row.innerHTML = '<span class="' + badgeClass + '" style="margin-right: 8px;">' + item.badge + '</span>' +
+                                '<strong>' + item.timestamp + '</strong> — ' +
+                                '<span style="opacity: 0.85;">' + item.description + '</span>';
+                container.appendChild(row);
+            });
+        }
+
+        renderEmptyGrid();
+
         // Inline initial JSON injection to ensure instant, zero-flicker UI render
         const initialData = <?
         local sf = io.open("/var/www/html/health/status.json", "r")
@@ -394,7 +416,6 @@ mg.include("scripts/lua/header.lp","r")
         ?>;
         if (initialData) updateUI(initialData);
 
-        renderEmptyGrid();
         refreshDashboard();
         setInterval(refreshDashboard, 30000);
     })();
