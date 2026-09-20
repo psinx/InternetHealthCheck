@@ -303,11 +303,12 @@ generate_status_json() {
 }
 EOF
 
-    # Output to the final destination safely
+    # Output to the final destination safely and atomically
     mkdir -p "$(dirname "$output_file")" 2>/dev/null
-    if cat "$temp_json" > "$output_file" 2>/dev/null; then
-        rm -f "$temp_json"
+    if mv -f "$temp_json" "$output_file" 2>/dev/null; then
+        :
     else
-        mv -f "$temp_json" "$output_file"
+        cat "$temp_json" > "$output_file" 2>/dev/null || true
+        rm -f "$temp_json" 2>/dev/null || true
     fi
 }
