@@ -36,19 +36,57 @@ mg.include("scripts/lua/header.lp","r")
         }
 
         /* DNS Chain Node Styling */
-        .chain-flow { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 15px 5px; }
-        .chain-node { border: 2px solid #00a65a; border-radius: 6px; padding: 15px 20px; flex: 1; text-align: center; min-width: 0; }
+        .chain-flow { 
+            display: flex; 
+            align-items: stretch; 
+            justify-content: space-between; 
+            gap: 12px; 
+            padding: 15px 5px; 
+        }
+        .chain-node { 
+            border: 2px solid #00a65a; 
+            border-radius: 6px; 
+            padding: 14px 12px; 
+            flex: 1 1 0; 
+            min-width: 0; 
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center; 
+            box-sizing: border-box;
+        }
         .chain-node.node-fail { border-color: #dd4b39; }
-        .node-name { font-weight: bold; font-size: 1.15em; }
-        .node-status-desc { font-size: 0.88em; opacity: 0.7; font-family: monospace; margin-top: 4px; }
-        .connector-arrow { font-size: 1.5em; color: #00a65a; font-weight: bold; }
+        .node-name { font-weight: bold; font-size: 1.1em; }
+        .node-status-desc { font-size: 0.85em; opacity: 0.7; font-family: monospace; margin-top: 4px; word-break: break-word; }
+        .connector-arrow { 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            font-size: 1.5em; 
+            color: #00a65a; 
+            font-weight: bold; 
+            flex-shrink: 0; 
+        }
 
+        /* Mobile: uniform 2x2 grid */
         @media (max-width: 767px) {
-            .chain-flow { flex-wrap: wrap; justify-content: center; gap: 8px; }
-            .chain-node { flex: 1 1 40%; padding: 10px 8px; }
+            .chain-flow { 
+                display: grid; 
+                grid-template-columns: 1fr 1fr; 
+                grid-auto-rows: 1fr; 
+                gap: 10px; 
+                padding: 10px 0; 
+            }
+            .chain-node { 
+                width: 100%; 
+                height: 100%; 
+                padding: 12px 6px; 
+                min-height: 72px; 
+            }
             .connector-arrow { display: none; }
-            .node-name { font-size: 1em; }
-            .node-status-desc { font-size: 0.78em; }
+            .node-name { font-size: 0.95em; }
+            .node-status-desc { font-size: 0.75em; }
         }
     </style>
 </head>
