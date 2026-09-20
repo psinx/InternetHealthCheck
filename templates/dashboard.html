@@ -33,9 +33,10 @@
         .hour-cell { 
             flex: 1; 
             height: 26px; 
-            background-color: #00a65a; 
+            background-color: #d2d6de; 
+            opacity: 0.7;
             border-radius: 3px; 
-            transition: transform 0.15s, box-shadow 0.15s; 
+            transition: transform 0.15s, box-shadow 0.15s, background-color 0.2s, opacity 0.2s; 
             position: relative;
             cursor: pointer;
         }
@@ -44,9 +45,18 @@
             z-index: 10;
             box-shadow: 0 2px 6px rgba(0,0,0,0.25);
         }
-        .hour-cell.hour-warning { background-color: #f39c12; }
-        .hour-cell.hour-danger { background-color: #dd4b39; }
+        .hour-cell.hour-ok { background-color: #00a65a; opacity: 1; }
+        .hour-cell.hour-warning { background-color: #f39c12; opacity: 1; }
+        .hour-cell.hour-danger { background-color: #dd4b39; opacity: 1; }
         .hour-cell.hour-inactive { background-color: #d2d6de; opacity: 0.7; }
+
+        @media (prefers-color-scheme: dark) {
+            .hour-cell { background-color: #4b646f; opacity: 0.45; }
+            .hour-cell.hour-ok { background-color: #00a65a; opacity: 1; }
+            .hour-cell.hour-warning { background-color: #f39c12; opacity: 1; }
+            .hour-cell.hour-danger { background-color: #dd4b39; opacity: 1; }
+            .hour-cell.hour-inactive { background-color: #4b646f; opacity: 0.45; }
+        }
         
         /* Time Labels Header above Grid */
         .time-header-row { display: flex; margin-left: 110px; margin-bottom: 6px; gap: 3px; font-size: 11px; font-weight: bold; }
@@ -263,6 +273,6 @@
 <script src="/admin/vendor/jquery/jquery.min.js"></script>
 <!-- AdminLTE layout engine (handles sidebar/content-wrapper height) -->
 <script src="/admin/vendor/adminLTE/adminlte.min.js"></script>
-<script src="/app.js?v=1.8"></script>
+<script src="/app.js?v=1.9"></script>
 </body>
 </html>

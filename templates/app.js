@@ -117,9 +117,9 @@
             container.innerHTML = '';
             for (let h = 0; h < 24; h++) {
                 const cell = document.createElement('div');
-                cell.className = 'hour-cell';
+                cell.className = 'hour-cell hour-inactive';
                 const timeRange = formatHourRange(h);
-                const defaultData = { status: 'OK', pihole: true, dnscrypt: true, cloudflare: true };
+                const defaultData = { status: 'INACTIVE', pihole: true, dnscrypt: true, cloudflare: true };
                 attachTooltipEvents(cell, defaultData, labels[rowId], timeRange);
                 container.appendChild(cell);
             }
@@ -250,9 +250,10 @@
             row.hours.forEach(hourData => {
                 const cell = document.createElement('div');
                 let cellClass = 'hour-cell';
-                if (hourData.status === 'WARNING') cellClass += ' hour-warning';
+                if (hourData.status === 'OK') cellClass += ' hour-ok';
+                else if (hourData.status === 'WARNING') cellClass += ' hour-warning';
                 else if (hourData.status === 'DANGER') cellClass += ' hour-danger';
-                else if (hourData.status === 'INACTIVE') cellClass += ' hour-inactive';
+                else cellClass += ' hour-inactive';
                 cell.className = cellClass;
                 
                 const timeRange = formatHourRange(hourData.hour);
