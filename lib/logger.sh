@@ -16,7 +16,7 @@ log() {
     if [[ "$LOG_TO_FILE" == "true" && -n "$LOG_FILE" ]]; then
         echo "$log_entry" >> "$LOG_FILE"
         WRITE_OCCURRED=true
-    else
+    elif [[ "${OUTPUT_FORMAT:-}" != "pretty" ]]; then
         echo "$log_entry" >&2
     fi
 }

@@ -10,11 +10,11 @@ A modular, lightweight Bash suite for monitoring internet connectivity and DNS c
 ## 🚀 Quick Start
 
 ```bash
-# Run real-time diagnostic scan
-./internet_health_check.sh --diagnose
-
-# Run standard health check (output to stdout)
+# Run real-time check (pretty visual output in terminal)
 ./internet_health_check.sh
+
+# Run check with standard log lines to stdout
+./internet_health_check.sh --format log
 
 # Run health check with Pi-hole v6 HTML dashboard & RAM-based disk-wear protection
 ./internet_health_check.sh --log-file logs/internet_health.log --reduce-disk-wear --html-file /var/www/html/health.html
@@ -62,13 +62,13 @@ A modular, lightweight Bash suite for monitoring internet connectivity and DNS c
 ├── lib/
 │   ├── network.sh             # Network interface discovery, ping, & dig DNS queries
 │   ├── logger.sh              # RAM state engine, disk wear reduction, & log rotation
-│   └── diagnose.sh            # Terminal diagnostic scanner (--diagnose)
+│   └── display.sh             # Terminal formatting and visual status output
 ├── templates/
 │   ├── dashboard.html         # Native Pi-hole v6 AdminLTE dashboard template
 │   ├── app.js                 # CSP-compliant dashboard renderer & tooltip engine
 │   └── health.lp              # Pi-hole v6 Lua template integration page
 ├── tests/
-│   └── test_internet_health_check.sh  # Automated unit & integration test suite (18 tests)
+│   └── test_internet_health_check.sh  # Automated unit & integration test suite (20 tests)
 ├── CHANGELOG.md               # Version release notes (v1.0.0, v2.0.0)
 └── logs/                      # Log directory (auto-rotated at 2 MB)
 ```
@@ -84,33 +84,36 @@ Options:
   --log-file FILE       Write logs to FILE instead of stdout.
   --reduce-disk-wear    Reduce log writes: store rolling history in RAM (/dev/shm/),
                         only write state changes or outages to disk log.
+  --format FORMAT       Output format: 'pretty' (visual checklist) or 'log' (syslog style).
+                        Defaults to 'pretty' in interactive terminals, 'log' when piped/cron.
+  --pretty              Shortcut for --format pretty.
+  --log-format          Shortcut for --format log.
   --html-file FILE      Generate a Pi-hole v6 style HTML status dashboard at FILE.
   --interfaces IFACES   Comma-separated list of interfaces (e.g., "eth0,wlan0").
                         Defaults to auto-detecting all active interfaces.
   --upstream-dns IP     Override upstream DNS IP for resolution testing.
-  --diagnose            Perform a real-time terminal diagnostics scan and exit.
   -h, --help            Show this help message.
 ```
 
 ---
 
-## 📊 Live Terminal Diagnostics (`--diagnose`)
+## 📊 Live Terminal Output
 
-Run `./internet_health_check.sh --diagnose` to inspect network health directly in your terminal:
+Running `./internet_health_check.sh` interactively in your terminal immediately displays the real-time visual health status:
 
 ```
 ==========================================
-INTERNET HEALTH - REAL-TIME DIAGNOSTICS
+INTERNET HEALTH - REAL-TIME STATUS
 ==========================================
 
-Checking Interface: eth0
+Interface: eth0
   ✓ 1. Physical Link: CONNECTED
   ✓ 2. Local IP Assigned: 192.168.1.2
-  ✓ 3. Gateway Ping (192.168.1.1): RESPONDING
+  ✓ 3. Internet Ping (1.1.1.1): PASS (16ms, 0% loss)
   4. DNS Chain Resolution:
-     ✓ Hop 1 (Pi-hole @127.0.0.1:53): PASS (4ms)
-     ✓ Hop 2 (dnscrypt-proxy @127.0.0.1:5053): PASS (4ms)
-     ✓ Hop 3 (Cloudflare public @1.1.1.3:53): PASS (16ms)
+     ✓ Hop 1 (Pi-hole @127.0.0.1:53): PASS (0ms)
+     ✓ Hop 2 (dnscrypt-proxy @127.0.0.1:5053): PASS (0ms)
+     ✓ Hop 3 (Cloudflare @1.1.1.3:53): PASS (20ms)
   STATUS: Interface online and fully operational.
 ```
 

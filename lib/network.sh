@@ -16,6 +16,26 @@ get_interface_ip() {
     fi
 }
 
+# Check physical link carrier status (1=connected, 0=no carrier/disconnected)
+get_interface_carrier() {
+    local interface=$1
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        if ifconfig "$interface" 2>/dev/null | grep -q "status: active"; then
+            echo 1
+        else
+            echo 0
+        fi
+    else
+        if [[ -f "/sys/class/net/$interface/carrier" ]]; then
+            cat "/sys/class/net/$interface/carrier" 2>/dev/null || echo 1
+        elif command -v ip >/dev/null 2>&1 && ip link show "$interface" 2>/dev/null | grep -q "NO-CARRIER"; then
+            echo 0
+        else
+            echo 1
+        fi
+    fi
+}
+
 # Detect upstream DNS resolver IP from dnscrypt-proxy configuration and resolver cache
 detect_upstream_dns() {
     local override_ip=${1:-""}
@@ -105,9 +125,12 @@ check_dns() {
     # Require local IP
     [[ -z "$local_ip" ]] && return 1
     
+    local timeout="${DNS_TIMEOUT:-3}"
+    local tries="${DNS_TRIES:-2}"
+
     local dig_out
-    # Query with 2s timeout, 1 retry
-    dig_out=$(dig +time=2 +tries=1 "$DNS_TEST_DOMAIN" "@$server" -p "$port" -b "$local_ip" 2>&1)
+    # Query with configurable timeout and retries (default: 3s timeout, 2 tries)
+    dig_out=$(dig +time="$timeout" +tries="$tries" "$DNS_TEST_DOMAIN" "@$server" -p "$port" -b "$local_ip" 2>&1)
     local exit_status=$?
     
     if (( exit_status == 0 )) && echo "$dig_out" | grep -q 'Query time:'; then
