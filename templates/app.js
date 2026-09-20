@@ -155,15 +155,15 @@
     }
 
     function updateUI(data) {
-        let activeStatus = data.status || 'Healthy';
+        let activeStatus = (data.status === 'Healthy' || data.status === 'Operational') ? 'Operational' : (data.status || 'Operational');
         if (data.interfaces) {
             const ethOk = !data.interfaces.eth0 || !data.interfaces.eth0.exists || (data.interfaces.eth0.connectivity === 'OK' && data.interfaces.eth0.dns_ok !== false);
             const wlanOk = !data.interfaces.wlan0 || !data.interfaces.wlan0.exists || (data.interfaces.wlan0.connectivity === 'OK');
-            activeStatus = (ethOk && wlanOk) ? 'Healthy' : 'Degraded';
+            activeStatus = (ethOk && wlanOk) ? 'Operational' : 'Degraded';
         }
         const headerLabel = document.getElementById('header-status-label');
         if (headerLabel) {
-            headerLabel.className = activeStatus === 'Healthy' ? 'label label-success' : 'label label-danger';
+            headerLabel.className = activeStatus === 'Operational' ? 'label label-success' : 'label label-danger';
             headerLabel.textContent = '● STATUS: ' + activeStatus;
         }
 
