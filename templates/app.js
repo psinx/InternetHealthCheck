@@ -6,7 +6,7 @@
     function formatHourRange(h) {
         const start = pad(h) + ':00';
         const end = pad((h + 1) % 24) + ':00';
-        return start + ' to ' + end;
+        return start + ' - ' + end;
     }
 
     function getDisplayDate(label, dateStr) {
