@@ -5,6 +5,23 @@ Lightweight Bash and telemetry monitor for internet connectivity and DNS chain h
 [![Version](https://img.shields.io/badge/version-3.1.0-blue.svg)](https://github.com/psinx/InternetHealthCheck/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
 
+<p align="center">
+  <img src="assets/dashboard.png" alt="Internet Health Check Dashboard" width="100%">
+</p>
+
+---
+
+## Features
+
+* **Native Pi-hole v6 UI**: AdminLTE layout matching Pi-hole v6 with automatic dark and light theme switching (`prefers-color-scheme`).
+* **Multi-Hop DNS Diagnostics**: Real-time chain resolution across Client (`eth0`, `wlan0`), Pi-hole, dnscrypt-proxy, and upstream Cloudflare hops.
+* **Hop Latencies & Interfaces**: Live latency benchmarks, link state, and ping packet loss metrics.
+* **72-Hour Historical SLA Grid**: Chronological 3-row uptime grid (*2 Days Ago*, *Yesterday*, *Today*) with interactive root-cause hover tooltips.
+* **Recent Events & Outages Log**: Timestamped table capturing interface disconnects and WAN outages.
+* **Single-Pass Telemetry**: Compiles `status.json` in one pass; frontend polls asynchronously every 30 seconds with relative freshness tickers.
+* **Zero Disk Wear**: High-frequency states buffered in RAM (`/dev/shm`), writing to disk only during state transitions or outages to protect SD card longevity.
+* **Concurrency Locking**: Non-blocking POSIX `flock` guards against overlapping cron executions.
+
 ---
 
 ## Quick Start
@@ -58,9 +75,6 @@ Lightweight Bash and telemetry monitor for internet connectivity and DNS chain h
    */5 * * * * /path/to/InternetHealthCheck/internet_health_check.sh --reduce-disk-wear --html-file /var/www/html/index.html --log-file /path/to/InternetHealthCheck/logs/internet_health.log >/dev/null 2>&1
    ```
 
-   * **Disk wear protection (`--reduce-disk-wear`)**: High-frequency states are buffered in RAM (`/dev/shm/internet_health_history.txt`). Redundant `OK` entries are suppressed, writing to disk only during outages, state transitions, or 24-hour heartbeats to maximize SD card lifespan.
-   * **Concurrency control**: Guarded automatically via non-blocking POSIX `flock`.
-
 ### Client Workstation (macOS / Linux)
 
 Run health checks against a remote Pi-hole over LAN:
@@ -86,16 +100,6 @@ cd InternetHealthCheck
 | `--upstream-dns` | `IP` | Upstream DNS server to query (default: auto-detected or `1.1.1.3`) |
 | `--format` | `pretty\|log` | Output format: `pretty` (visual checklist) or `log` (timestamped syslog) |
 | `-h`, `--help` | None | Display help message |
-
----
-
-## Dashboard
-
-![Internet Health Check Dashboard](assets/dashboard.png)
-
-* **Single-Pass Telemetry**: Compiles `status.json` in a single run; frontend polls asynchronously every 30 seconds with relative freshness tickers.
-* **Auto Theme**: Automatically switches between dark and light themes following system `prefers-color-scheme`.
-* **Clean UI**: Semantic AdminLTE status badges without unicode symbol clutter.
 
 ---
 
