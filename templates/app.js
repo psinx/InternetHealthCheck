@@ -202,7 +202,7 @@
                     if (isOnline) anyOnline = true;
                     else allOnline = false;
                 }
-                clientDesc.textContent = parts.length > 0 ? parts.join(' | ') : 'Local Machine (Active)';
+                clientDesc.innerHTML = parts.length > 0 ? parts.join('<br>') : 'Local Machine (Active)';
                 if (allOnline) {
                     clientNode.className = 'chain-node node-ok';
                 } else if (anyOnline) {

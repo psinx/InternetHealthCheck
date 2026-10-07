@@ -53,7 +53,7 @@ mg.include("scripts/lua/header.lp","r")
         .chain-node.node-warning { border-color: #f39c12; }
         .chain-node.node-fail { border-color: #dd4b39; }
         .node-name { font-weight: bold; font-size: 1.1em; }
-        .node-status-desc { font-size: 0.85em; opacity: 0.7; font-family: monospace; margin-top: 4px; word-break: break-word; }
+        .node-status-desc { font-size: 0.85em; opacity: 0.7; font-family: monospace; margin-top: 4px; word-break: break-word; line-height: 1.35; }
         .connector-arrow { 
             display: flex; 
             align-items: center; 
@@ -370,7 +370,7 @@ mg.include("scripts/lua/header.lp","r")
                         if (isOnline) anyOnline = true;
                         else allOnline = false;
                     }
-                    clientDesc.textContent = parts.length > 0 ? parts.join(' | ') : 'Local Machine (Active)';
+                    clientDesc.innerHTML = parts.length > 0 ? parts.join('<br>') : 'Local Machine (Active)';
                     if (allOnline) {
                         clientNode.className = 'chain-node node-ok';
                     } else if (anyOnline) {
