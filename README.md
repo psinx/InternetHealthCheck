@@ -48,7 +48,7 @@ Lightweight Bash and telemetry monitor for internet connectivity and DNS chain h
 
 2. **Deploy web assets:**
    ```bash
-   sudo cp -f templates/dashboard.html /var/www/html/index.html
+   sudo cp -f templates/index.html /var/www/html/index.html
    sudo cp -f templates/app.js /var/www/html/app.js
    ```
 

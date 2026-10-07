@@ -377,8 +377,8 @@ generate_status_json() {
 
     # If output_target is an HTML file, copy index.html & app.js templates alongside status.json
     if [[ "$output_target" == *.html ]]; then
-        if [[ -f "${SCRIPT_DIR}/templates/dashboard.html" ]]; then
-            cp -f "${SCRIPT_DIR}/templates/dashboard.html" "$output_target" 2>/dev/null || true
+        if [[ -f "${SCRIPT_DIR}/templates/index.html" ]]; then
+            cp -f "${SCRIPT_DIR}/templates/index.html" "$output_target" 2>/dev/null || true
         fi
         if [[ -f "${SCRIPT_DIR}/templates/app.js" ]]; then
             cp -f "${SCRIPT_DIR}/templates/app.js" "${target_dir}/app.js" 2>/dev/null || true
