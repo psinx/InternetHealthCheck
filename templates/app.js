@@ -55,7 +55,7 @@
         // Highlight stale data if older than 15 minutes
         if (diffSeconds >= 900) {
             el.className = 'label label-warning';
-            el.textContent = '! ' + text + ' (Stale)';
+            el.textContent = text + ' (Stale)';
         } else {
             el.className = 'text-muted';
             el.textContent = text;
@@ -82,7 +82,7 @@
         if (hourData.status === 'INACTIVE') {
             let html = '<div style="font-weight: bold; margin-bottom: 6px; border-bottom: 1px solid #4b646f; padding-bottom: 4px; display: flex; justify-content: space-between; align-items: center; gap: 15px;">' +
                        '<span>' + safeDay + ' ' + safeTime + '</span>' +
-                       '<span class="label label-default">● Pending</span>' +
+                       '<span class="label label-default">Pending</span>' +
                        '</div>';
             html += '<div style="font-size: 11px; color: #8a8a8a; margin-top: 4px; text-align: center; background: #1a2226; padding: 6px 8px; border-radius: 4px;">' +
                     'Monitoring slot pending' +
@@ -97,20 +97,19 @@
         const cfOk = isOk ? true : (hourData.cloudflare !== false);
 
         const badgeClass = isOk ? 'label label-success' : (hourData.status === 'DANGER' ? 'label label-danger' : (hourData.status === 'WARNING' ? 'label label-warning' : 'label label-default'));
-        const badgeSymbol = isOk ? '✓ ' : (hourData.status === 'DANGER' ? '✕ ' : '! ');
         const badgeText = isOk ? '100% Operational' : (hourData.status === 'DANGER' ? 'Outage' : escapeHTML(hourData.status));
 
         const piStyle = piOk ? 'color: #00a65a;' : 'color: #dd4b39;';
         const dnsStyle = dnsOk ? 'color: #00a65a;' : 'color: #dd4b39;';
         const cfStyle = cfOk ? 'color: #00a65a;' : 'color: #dd4b39;';
 
-        const piLabel = 'Pi-hole (' + (piOk ? '✓ OK' : '✕ FAIL') + ')';
-        const dnsLabel = 'dnscrypt (' + (dnsOk ? '✓ OK' : '✕ FAIL') + ')';
-        const cfLabel = 'Cloudflare (' + (cfOk ? '✓ OK' : '✕ FAIL') + ')';
+        const piLabel = 'Pi-hole (' + (piOk ? 'OK' : 'FAIL') + ')';
+        const dnsLabel = 'dnscrypt (' + (dnsOk ? 'OK' : 'FAIL') + ')';
+        const cfLabel = 'Cloudflare (' + (cfOk ? 'OK' : 'FAIL') + ')';
 
         let html = '<div style="font-weight: bold; margin-bottom: 6px; border-bottom: 1px solid #4b646f; padding-bottom: 4px; display: flex; justify-content: space-between; align-items: center; gap: 15px;">' +
                    '<span>' + safeDay + ' ' + safeTime + '</span>' +
-                   '<span class="' + badgeClass + '">' + badgeSymbol + badgeText + '</span>' +
+                   '<span class="' + badgeClass + '">' + badgeText + '</span>' +
                    '</div>';
 
         html += '<div style="display: flex; align-items: center; gap: 6px; margin: 6px 0; background: #1a2226; padding: 5px 8px; border-radius: 4px; font-family: monospace; font-size: 11px;">' +
@@ -220,18 +219,14 @@
         }
         const headerLabel = document.getElementById('header-status-label');
         if (headerLabel) {
-            let symbol = '●';
             if (activeStatus === 'Healthy') {
                 headerLabel.className = 'label label-success';
-                symbol = '✓';
             } else if (activeStatus === 'Degraded' || activeStatus === 'Partial Outage' || activeStatus === 'DNS Issues') {
                 headerLabel.className = 'label label-warning';
-                symbol = '!';
             } else {
                 headerLabel.className = 'label label-danger';
-                symbol = '✕';
             }
-            headerLabel.textContent = symbol + ' STATUS: ' + activeStatus;
+            headerLabel.textContent = 'STATUS: ' + activeStatus;
         }
 
         let activeIface = null;
@@ -249,13 +244,13 @@
                 let allOnline = true;
                 if (eth && eth.exists) {
                     const isOnline = (eth.connectivity === 'OK');
-                    parts.push('eth0: ' + (isOnline ? '✓ Online' : '✕ Down'));
+                    parts.push('eth0: ' + (isOnline ? 'Online' : 'Down'));
                     if (isOnline) anyOnline = true;
                     else allOnline = false;
                 }
                 if (wlan && wlan.exists) {
                     const isOnline = (wlan.connectivity === 'OK');
-                    parts.push('wlan0: ' + (isOnline ? '✓ Online' : '✕ Down'));
+                    parts.push('wlan0: ' + (isOnline ? 'Online' : 'Down'));
                     if (isOnline) anyOnline = true;
                     else allOnline = false;
                 }
@@ -276,8 +271,7 @@
                 const lossVal = activeIface.packet_loss !== undefined ? activeIface.packet_loss : 0.0;
                 const lossEl = document.getElementById('if-loss');
                 if (lossEl) {
-                    const lossSym = (lossVal === 0.0) ? '✓ ' : ((lossVal < 50.0) ? '! ' : '✕ ');
-                    lossEl.textContent = lossSym + lossVal.toFixed(1) + '%';
+                    lossEl.textContent = lossVal.toFixed(1) + '%';
                     if (lossVal === 0.0) {
                         lossEl.className = 'label label-success';
                     } else if (lossVal < 50.0) {
@@ -318,18 +312,14 @@
             const slaEl = document.getElementById('grid-uptime-pct');
             if (slaEl) {
                 const val = Number(data.sla_percentage);
-                let sym = '✓';
                 if (val < 95.0) {
                     slaEl.className = 'label label-danger';
-                    sym = '✕';
                 } else if (val < 99.0) {
                     slaEl.className = 'label label-warning';
-                    sym = '!';
                 } else {
                     slaEl.className = 'label label-success';
-                    sym = '✓';
                 }
-                slaEl.textContent = sym + ' SLA: ' + val.toFixed(2) + '%';
+                slaEl.textContent = 'SLA: ' + val.toFixed(2) + '%';
             }
         }
     }
@@ -337,10 +327,10 @@
     function updateInterfaceRow(elementId, iface) {
         const el = document.getElementById(elementId);
         if (!el) return;
-        if (!iface || !iface.exists) { el.textContent = '● Inactive'; el.className = 'label label-default'; }
-        else if (iface.connectivity === 'DOWN') { el.textContent = '✕ Offline'; el.className = 'label label-danger'; }
-        else if (iface.dns_ok === false) { el.textContent = '! DNS Issue'; el.className = 'label label-warning'; }
-        else { el.textContent = '✓ Online'; el.className = 'label label-success'; }
+        if (!iface || !iface.exists) { el.textContent = 'Inactive'; el.className = 'label label-default'; }
+        else if (iface.connectivity === 'DOWN') { el.textContent = 'Offline'; el.className = 'label label-danger'; }
+        else if (iface.dns_ok === false) { el.textContent = 'DNS Issue'; el.className = 'label label-warning'; }
+        else { el.textContent = 'Online'; el.className = 'label label-success'; }
     }
 
     function updateNodeState(nodeId, descId, isOk, portLabel) {
@@ -348,7 +338,7 @@
         const descEl = document.getElementById(descId);
         if (!nodeEl || !descEl) return;
         nodeEl.className = isOk ? 'chain-node node-ok' : 'chain-node node-fail';
-        descEl.textContent = portLabel + (isOk ? ' (✓ OK)' : ' (✕ FAIL)');
+        descEl.textContent = portLabel + (isOk ? ' (OK)' : ' (FAIL)');
     }
 
     function updateArrowState(arrowId, isOk) {
@@ -361,13 +351,13 @@
         const el = document.getElementById(elId);
         if (!el) return;
         if (val === undefined || val === -1 || val === null) {
-            el.textContent = '✕ TIMEOUT'; el.className = 'label label-danger';
+            el.textContent = 'TIMEOUT'; el.className = 'label label-danger';
         } else if (val > 150) {
-            el.textContent = '✕ ' + val + 'ms'; el.className = 'label label-danger';
+            el.textContent = val + 'ms'; el.className = 'label label-danger';
         } else if (val > 60) {
-            el.textContent = '! ' + val + 'ms'; el.className = 'label label-warning';
+            el.textContent = val + 'ms'; el.className = 'label label-warning';
         } else {
-            el.textContent = '✓ ' + val + 'ms'; el.className = 'label label-success';
+            el.textContent = val + 'ms'; el.className = 'label label-success';
         }
     }
 
@@ -413,7 +403,7 @@
             const badge = document.createElement('span');
             badge.className = isOutage ? 'label label-danger' : 'label label-warning';
             badge.style.marginRight = '8px';
-            badge.textContent = (isOutage ? '✕ ' : '! ') + (item.badge || 'Event');
+            badge.textContent = item.badge || 'Event';
             
             const ts = document.createElement('strong');
             ts.textContent = item.timestamp || '';
