@@ -199,31 +199,7 @@ mg.include("scripts/lua/header.lp","r")
                 </div>
             </div>
 
-            <!-- 72h Uptime Grid Box -->
-            <div class="box box-primary">
-                <div class="box-header with-border">
-                    <h3 class="box-title"><i class="fas fa-history"></i> Historical Uptime (Last 72 Hours)</h3>
-                    <div class="box-tools pull-right">
-                        <span id="grid-uptime-pct" class="label label-default" style="font-size: 0.9em;">● SLA: --%</span>
-                    </div>
-                </div>
-                <div class="box-body">
-                    <div class="grid-row">
-                        <div class="row-label">Today</div>
-                        <div class="row-cells" id="row-today"></div>
-                    </div>
-                    <div class="grid-row">
-                        <div class="row-label">Yesterday</div>
-                        <div class="row-cells" id="row-yesterday"></div>
-                    </div>
-                    <div class="grid-row">
-                        <div class="row-label">2 Days Ago</div>
-                        <div class="row-cells" id="row-2daysago"></div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Stat Boxes Row -->
+            <!-- Stat Boxes Row (Row 2: Current Status) -->
             <div class="row">
                 <div class="col-md-6">
                     <div class="box box-info">
@@ -251,6 +227,30 @@ mg.include("scripts/lua/header.lp","r")
                                 <tr><td>Packet Loss (Ping)</td><td><span id="if-loss" class="label label-default">--%</span></td></tr>
                             </table>
                         </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 72h Uptime Grid Box (Row 3: Historical) -->
+            <div class="box box-primary">
+                <div class="box-header with-border">
+                    <h3 class="box-title"><i class="fas fa-history"></i> Historical Uptime (Last 72 Hours)</h3>
+                    <div class="box-tools pull-right">
+                        <span id="grid-uptime-pct" class="label label-default" style="font-size: 0.9em;">● SLA: --%</span>
+                    </div>
+                </div>
+                <div class="box-body">
+                    <div class="grid-row">
+                        <div class="row-label">Today</div>
+                        <div class="row-cells" id="row-today"></div>
+                    </div>
+                    <div class="grid-row">
+                        <div class="row-label">Yesterday</div>
+                        <div class="row-cells" id="row-yesterday"></div>
+                    </div>
+                    <div class="grid-row">
+                        <div class="row-label">2 Days Ago</div>
+                        <div class="row-cells" id="row-2daysago"></div>
                     </div>
                 </div>
             </div>
