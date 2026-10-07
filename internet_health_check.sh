@@ -370,18 +370,33 @@ generate_status_json() {
     # Single-pass consolidated Python telemetry aggregator
     generate_telemetry_status_json "$system_status" "$ifaces_json" "$json_tmp"
 
-    local real_target
-    real_target=$(realpath "$json_target" 2>/dev/null || echo "$json_target")
-    mv -f "$json_tmp" "$real_target" 2>/dev/null || cp -f "$json_tmp" "$real_target" 2>/dev/null || cat "$json_tmp" > "$real_target" 2>/dev/null || true
+    # When reduce-disk-wear is active, keep status.json in RAM and symlink from webroot
+    if [[ "$REDUCE_DISK_WEAR" == true && -d "$DEFAULT_RAM_DIR" ]]; then
+        local ram_json="${DEFAULT_RAM_DIR}/status.json"
+        mv -f "$json_tmp" "$ram_json" 2>/dev/null || cp -f "$json_tmp" "$ram_json" 2>/dev/null || cat "$json_tmp" > "$ram_json" 2>/dev/null || true
+        chmod 666 "$ram_json" 2>/dev/null || true
+        if [[ ! -L "$json_target" || "$(readlink "$json_target" 2>/dev/null)" != "$ram_json" ]]; then
+            ln -sf "$ram_json" "$json_target" 2>/dev/null || true
+        fi
+    else
+        local real_target
+        real_target=$(realpath "$json_target" 2>/dev/null || echo "$json_target")
+        mv -f "$json_tmp" "$real_target" 2>/dev/null || cp -f "$json_tmp" "$real_target" 2>/dev/null || cat "$json_tmp" > "$real_target" 2>/dev/null || true
+    fi
     rm -f "$json_tmp" 2>/dev/null || true
 
-    # If output_target is an HTML file, copy index.html & app.js templates alongside status.json
+    # Only copy static web assets if missing or changed (prevents redundant disk writes every run)
     if [[ "$output_target" == *.html ]]; then
         if [[ -f "${SCRIPT_DIR}/templates/index.html" ]]; then
-            cp -f "${SCRIPT_DIR}/templates/index.html" "$output_target" 2>/dev/null || true
+            if [[ ! -f "$output_target" ]] || ! cmp -s "${SCRIPT_DIR}/templates/index.html" "$output_target"; then
+                cp -f "${SCRIPT_DIR}/templates/index.html" "$output_target" 2>/dev/null || true
+            fi
         fi
         if [[ -f "${SCRIPT_DIR}/templates/app.js" ]]; then
-            cp -f "${SCRIPT_DIR}/templates/app.js" "${target_dir}/app.js" 2>/dev/null || true
+            local target_js="${target_dir}/app.js"
+            if [[ ! -f "$target_js" ]] || ! cmp -s "${SCRIPT_DIR}/templates/app.js" "$target_js"; then
+                cp -f "${SCRIPT_DIR}/templates/app.js" "$target_js" 2>/dev/null || true
+            fi
         fi
     fi
 }

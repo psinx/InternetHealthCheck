@@ -683,6 +683,56 @@ assert isinstance(d['sla_percentage'], (int, float))
     cleanup_test_env
 }
 
+test_22_reduce_disk_wear_ram_json() {
+    echo "TEST 22: --reduce-disk-wear RAM status.json symlink and static template caching"
+    setup_test_env
+
+    local web_dir="$TEST_HOME/webroot"
+    mkdir -p "$web_dir"
+    local target_html="$web_dir/index.html"
+    local target_json="$web_dir/status.json"
+
+    cat > /tmp/test_disk_wear.sh << TESTEOF
+#!/bin/bash
+HOME="$TEST_HOME"
+export HOME
+export RAM_STATE_FILE="$TEST_RAM_FILE"
+source "$SCRIPT_PATH"
+main --log-file "$TEST_LOG_FILE" --html-file "$target_html" --reduce-disk-wear --format log
+TESTEOF
+    chmod +x /tmp/test_disk_wear.sh
+    SCRIPT_PATH="$SCRIPT_PATH" TEST_HOME="$TEST_HOME" TEST_RAM_FILE="$TEST_RAM_FILE" TEST_LOG_FILE="$TEST_LOG_FILE" bash /tmp/test_disk_wear.sh >/dev/null 2>&1
+
+    if [[ -L "$target_json" ]] && [[ "$(readlink "$target_json")" == *"/status.json" ]]; then
+        assert_pass "--reduce-disk-wear created symlink pointing status.json to RAM"
+    else
+        assert_fail "--reduce-disk-wear failed to create symlink for status.json"
+    fi
+
+    if [[ -f "$target_html" ]] && [[ -f "$web_dir/app.js" ]]; then
+        assert_pass "Static assets deployed on first run"
+    else
+        assert_fail "Static assets missing in webroot"
+    fi
+
+    # Record mtime of index.html, run again, verify mtime unchanged (not overwritten)
+    local mtime_before
+    mtime_before=$(stat -c %Y "$target_html" 2>/dev/null || stat -f %m "$target_html")
+    sleep 1
+    SCRIPT_PATH="$SCRIPT_PATH" TEST_HOME="$TEST_HOME" TEST_RAM_FILE="$TEST_RAM_FILE" TEST_LOG_FILE="$TEST_LOG_FILE" bash /tmp/test_disk_wear.sh >/dev/null 2>&1
+    local mtime_after
+    mtime_after=$(stat -c %Y "$target_html" 2>/dev/null || stat -f %m "$target_html")
+
+    if [[ "$mtime_before" == "$mtime_after" ]]; then
+        assert_pass "Static assets not rewritten when unchanged (prevents disk wear)"
+    else
+        assert_fail "Static assets were needlessly overwritten"
+    fi
+
+    rm -f /tmp/test_disk_wear.sh
+    cleanup_test_env
+}
+
 #=============================================================================
 # Main
 #=============================================================================
@@ -807,6 +857,8 @@ main() {
     test_20_flock_concurrency
     echo ""
     test_21_status_json_schema
+    echo ""
+    test_22_reduce_disk_wear_ram_json
     
     echo ""
     echo "=========================================="
