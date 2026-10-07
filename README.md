@@ -91,7 +91,7 @@ The health check validates an end-to-end 3-hop resolution chain alongside WAN re
 3. **Configure cron automation:**
    Edit crontab (`crontab -e`) to poll every 5 minutes (replace `/path/to` with your cloned repository path):
    ```bash
-   */5 * * * * /path/to/InternetHealthCheck/internet_health_check.sh --cron --dashboard /var/www/html/index.html --log-file /path/to/InternetHealthCheck/logs/internet_health.log >/dev/null 2>&1
+   */5 * * * * /path/to/InternetHealthCheck/internet_health_check.sh --reduce-disk-wear --dashboard /var/www/html/index.html --log-file /path/to/InternetHealthCheck/logs/internet_health.log >/dev/null 2>&1
    ```
 
 ### Client Workstation (macOS / Linux)
@@ -109,7 +109,6 @@ cd InternetHealthCheck
 
 | Option | Argument | Description |
 |---|---|---|
-| `--cron` | None | Unattended preset: implies `--reduce-disk-wear` and `--format log` |
 | `--reduce-disk-wear` | None | Buffer states in RAM (`/dev/shm`); write to disk only on state transitions or outages |
 | `--dashboard` | `FILE` | Deploy web dashboard (`index.html`, `app.js`) at `FILE` and write `status.json` alongside it |
 | `--log-file` | `FILE` | Persistent disk log path (default: stdout or `logs/internet_health.log`) |

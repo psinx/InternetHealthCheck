@@ -734,7 +734,7 @@ TESTEOF
 }
 
 test_23_cli_flags() {
-    echo "TEST 23: --cron preset and removed legacy flags"
+    echo "TEST 23: removed legacy flags and canonical help"
     setup_test_env
 
     local out rc
@@ -753,7 +753,7 @@ test_23_cli_flags() {
     fi
 
     out=$(bash "$SCRIPT_PATH" --help 2>&1)
-    if echo "$out" | grep -q -- "--cron" && echo "$out" | grep -q -- "--dashboard" && echo "$out" | grep -q -- "--resolver" && echo "$out" | grep -q -- "--upstream-host"; then
+    if echo "$out" | echo "$out" | grep -q -- "--dashboard" && echo "$out" | grep -q -- "--resolver" && echo "$out" | grep -q -- "--upstream-host"; then
         assert_pass "--help lists canonical flags"
     else
         assert_fail "--help missing canonical flags"

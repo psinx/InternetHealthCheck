@@ -55,7 +55,6 @@ Options:
                         only write state changes/outages to disk log.
   --format FORMAT       Output format: 'pretty' (visual checklist) or 'log' (syslog style).
                         Defaults to 'pretty' in interactive terminals, 'log' when piped/cron.
-  --cron                Unattended preset: implies --reduce-disk-wear and --format log.
   --dashboard FILE      Deploy the Pi-hole v6 style web dashboard (index.html, app.js) at FILE
                         and write status.json alongside it.
   --interfaces IFACES   Comma-separated list of interfaces to monitor (e.g. eth0,wlan0).
@@ -79,7 +78,7 @@ Examples:
   ./internet_health_check.sh --resolver 192.168.1.2 --skip-dnscrypt
 
   # Run daemon in cron, writing to RAM and logging transition alerts to disk
-  ./internet_health_check.sh --cron --log-file logs/health.log --dashboard /var/www/html/index.html
+  ./internet_health_check.sh --reduce-disk-wear --log-file logs/health.log --dashboard /var/www/html/index.html
 EOF
 }
 
@@ -126,11 +125,6 @@ main() {
             --format)
                 OUTPUT_FORMAT="$2"
                 shift 2
-                ;;
-            --cron)
-                REDUCE_DISK_WEAR=true
-                OUTPUT_FORMAT="log"
-                shift
                 ;;
             --dashboard)
                 HTML_FILE="$2"
