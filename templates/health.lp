@@ -169,8 +169,8 @@ mg.include("scripts/lua/header.lp","r")
         </section>
 
         <section class="content">
-            <!-- Live DNS Chain Box -->
-            <div class="box box-default">
+            <!-- Live DNS Chain Box (Live Status: Blue) -->
+            <div class="box box-info">
                 <div class="box-header with-border">
                     <h3 class="box-title"><i class="fas fa-network-wired"></i> Live DNS Chain Diagnostics</h3>
                     <div class="box-tools pull-right">
@@ -202,10 +202,10 @@ mg.include("scripts/lua/header.lp","r")
                 </div>
             </div>
 
-            <!-- Stat Boxes Row (Row 2: Current Status) -->
+            <!-- Stat Boxes Row (Row 2: Live Status: Blue) -->
             <div class="row">
                 <div class="col-md-6">
-                    <div class="box box-default">
+                    <div class="box box-info">
                         <div class="box-header with-border">
                             <h3 class="box-title"><i class="fas fa-tachometer-alt"></i> Hop Latency Benchmark</h3>
                         </div>
@@ -219,7 +219,7 @@ mg.include("scripts/lua/header.lp","r")
                     </div>
                 </div>
                 <div class="col-md-6">
-                    <div class="box box-default">
+                    <div class="box box-info">
                         <div class="box-header with-border">
                             <h3 class="box-title"><i class="fas fa-plug"></i> Network Interfaces</h3>
                         </div>
