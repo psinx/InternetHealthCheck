@@ -44,25 +44,19 @@ cd ~/InternetHealthCheck
 chmod +x internet_health_check.sh tests/test_internet_health_check.sh
 ```
 
-Deploy web assets to your web server root and/or Pi-hole admin:
+Deploy web assets:
 ```bash
-sudo mkdir -p /var/www/html/health /var/www/html/admin
-
-# Standalone dashboards (http://<pi-ip>/ and http://<pi-ip>/health/)
+# Standalone dashboard (http://<pi-ip>/)
 sudo cp -f templates/dashboard.html /var/www/html/index.html
 sudo cp -f templates/app.js /var/www/html/app.js
-sudo cp -f templates/dashboard.html /var/www/html/health/index.html
-sudo cp -f templates/app.js /var/www/html/health/app.js
 
 # Pi-hole v6 AdminLTE page (http://<pi-ip>/admin/health.lp)
 sudo cp -f templates/health.lp /var/www/html/admin/health.lp
-
-sudo chown -R www-data:www-data /var/www/html/health
 ```
 
 Add a cron job (`crontab -e`) to poll every 5 minutes:
 ```cron
-*/5 * * * * ~/InternetHealthCheck/internet_health_check.sh --reduce-disk-wear --html-file /var/www/html/health/index.html --log-file ~/InternetHealthCheck/logs/internet_health.log >/dev/null 2>&1
+*/5 * * * * ~/InternetHealthCheck/internet_health_check.sh --reduce-disk-wear --html-file /var/www/html/index.html --log-file ~/InternetHealthCheck/logs/internet_health.log >/dev/null 2>&1
 ```
 
 > **Why `--reduce-disk-wear`?**  

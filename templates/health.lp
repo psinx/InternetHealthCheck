@@ -489,7 +489,7 @@ mg.include("scripts/lua/header.lp","r")
         }
 
         async function refreshDashboard() {
-            const paths = ['/health/status.json', 'status.json', '/status.json', '/dev/shm/status.json'];
+            const paths = ['/status.json', 'status.json', '/dev/shm/status.json'];
             let data = null;
             for (const path of paths) {
                 try {

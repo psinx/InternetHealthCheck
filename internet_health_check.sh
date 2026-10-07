@@ -79,7 +79,7 @@ Examples:
   ./internet_health_check.sh --pihole-host 192.168.1.2 --skip-dnscrypt
 
   # Run daemon in cron, writing to RAM and logging transition alerts to disk
-  ./internet_health_check.sh --log-file logs/health.log --reduce-disk-wear --html-file /var/www/html/health/index.html
+  ./internet_health_check.sh --log-file logs/health.log --reduce-disk-wear --html-file /var/www/html/index.html
 EOF
 }
 
@@ -648,7 +648,7 @@ EOF
 build_72h_history_json() {
     python3 -c '
 import json, os, sys
-target = os.environ.get("STATUS_JSON", "/var/www/html/health/status.json")
+target = os.environ.get("STATUS_JSON", "/var/www/html/status.json")
 if os.path.exists(target):
     try:
         with open(target) as f:
@@ -663,7 +663,7 @@ print("[{\"label\":\"2 Days Ago\",\"hours\":[]},{\"label\":\"Yesterday\",\"hours
 calculate_sla_percentage() {
     python3 -c '
 import json, os, sys
-target = os.environ.get("STATUS_JSON", "/var/www/html/health/status.json")
+target = os.environ.get("STATUS_JSON", "/var/www/html/status.json")
 if os.path.exists(target):
     try:
         with open(target) as f:
@@ -678,7 +678,7 @@ print("100.00")
 extract_incidents_json() {
     python3 -c '
 import json, os, sys
-target = os.environ.get("STATUS_JSON", "/var/www/html/health/status.json")
+target = os.environ.get("STATUS_JSON", "/var/www/html/status.json")
 if os.path.exists(target):
     try:
         with open(target) as f:
