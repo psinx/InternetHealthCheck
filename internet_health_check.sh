@@ -25,9 +25,9 @@ LOG_TO_FILE=false
 REDUCE_DISK_WEAR=false
 HTML_FILE=""
 INTERFACE_OVERRIDE=""
-UPSTREAM_HOST=""
+UPSTREAM_DNS=""
 OUTPUT_FORMAT=""
-RESOLVER_HOST="${RESOLVER_HOST:-}"
+PIHOLE_DNS="${PIHOLE_DNS:-}"
 DNSCRYPT_HOST="${DNSCRYPT_HOST:-}"
 SKIP_DNSCRYPT="${SKIP_DNSCRYPT:-false}"
 TAG="[INTERNET-HEALTH-CHECK]"
@@ -59,11 +59,11 @@ Options:
                         and write status.json alongside it.
   --interfaces IFACES   Comma-separated list of interfaces to monitor (e.g. eth0,wlan0).
                         Defaults to auto-detecting all active interfaces.
-  --resolver HOST       Primary DNS resolver (Pi-hole, router, Unbound...) to test (defaults to
+  --pihole-dns HOST     Primary DNS resolver (Pi-hole, router, Unbound...) to test (defaults to
                         127.0.0.1 on server, or auto-discovered system nameserver on macOS clients).
   --dnscrypt-host HOST  dnscrypt-proxy host to test (defaults to 127.0.0.1).
   --skip-dnscrypt       Skip Hop 2 dnscrypt check (useful for client machines on LAN).
-  --upstream-host HOST  Specify upstream DNS server IP/hostname to query (e.g. 1.1.1.3).
+  --upstream-dns HOST   Specify upstream DNS server IP/hostname to query (e.g. 1.1.1.3).
                         Defaults to auto-detecting server_names from /etc/dnscrypt-proxy/dnscrypt-proxy.toml.
   -h, --help            Show this help message
 
@@ -75,7 +75,7 @@ Examples:
   ./internet_health_check.sh --format log
 
   # Run on a Mac client pointing to Pi-hole on LAN
-  ./internet_health_check.sh --resolver 192.168.1.2 --skip-dnscrypt
+  ./internet_health_check.sh --pihole-dns 192.168.1.2 --skip-dnscrypt
 
   # Run daemon in cron, writing to RAM and logging transition alerts to disk
   ./internet_health_check.sh --reduce-disk-wear --log-file logs/health.log --dashboard /var/www/html/index.html
@@ -134,8 +134,8 @@ main() {
                 INTERFACE_OVERRIDE="$2"
                 shift 2
                 ;;
-            --resolver)
-                RESOLVER_HOST="$2"
+            --pihole-dns)
+                PIHOLE_DNS="$2"
                 shift 2
                 ;;
             --dnscrypt-host)
@@ -147,8 +147,8 @@ main() {
                 SKIP_DNSCRYPT=true
                 shift
                 ;;
-            --upstream-host)
-                UPSTREAM_HOST="$2"
+            --upstream-dns)
+                UPSTREAM_DNS="$2"
                 shift 2
                 ;;
             -h|--help)
@@ -177,29 +177,29 @@ main() {
     fi
 
     # Resolve target DNS hosts (defaults to 127.0.0.1 on Linux, auto-detects LAN resolver on macOS)
-    if [[ -z "$RESOLVER_HOST" ]]; then
+    if [[ -z "$PIHOLE_DNS" ]]; then
         if [[ "$OSTYPE" == "darwin"* ]]; then
             if command -v nc >/dev/null 2>&1 && nc -z -w1 127.0.0.1 53 >/dev/null 2>&1; then
-                RESOLVER_HOST="127.0.0.1"
+                PIHOLE_DNS="127.0.0.1"
             else
                 local sys_dns=""
                 if command -v scutil >/dev/null 2>&1; then
                     sys_dns=$(scutil --dns 2>/dev/null | grep 'nameserver\[0\]' | head -n1 | awk '{print $3}')
                 fi
                 [[ -z "$sys_dns" && -f "/etc/resolv.conf" ]] && sys_dns=$(grep -E '^nameserver' /etc/resolv.conf 2>/dev/null | head -n1 | awk '{print $2}')
-                RESOLVER_HOST="${sys_dns:-127.0.0.1}"
+                PIHOLE_DNS="${sys_dns:-127.0.0.1}"
             fi
         else
-            RESOLVER_HOST="127.0.0.1"
+            PIHOLE_DNS="127.0.0.1"
         fi
     fi
-    export RESOLVER_HOST
+    export PIHOLE_DNS
 
     DNSCRYPT_HOST="${DNSCRYPT_HOST:-127.0.0.1}"
     export DNSCRYPT_HOST
 
     # In Client mode on macOS, if Pi-hole is remote and dnscrypt was not specified, auto-skip dnscrypt
-    if [[ "$OSTYPE" == "darwin"* && "$RESOLVER_HOST" != "127.0.0.1" && "${DNSCRYPT_HOST_SPECIFIED:-false}" != "true" ]]; then
+    if [[ "$OSTYPE" == "darwin"* && "$PIHOLE_DNS" != "127.0.0.1" && "${DNSCRYPT_HOST_SPECIFIED:-false}" != "true" ]]; then
         SKIP_DNSCRYPT=true
     fi
     export SKIP_DNSCRYPT
@@ -236,7 +236,7 @@ main() {
 
     # Detect upstream resolver IP (e.g. 1.1.1.3 for cloudflare-family)
     local detected_upstream
-    detected_upstream=$(detect_upstream_dns "$UPSTREAM_HOST")
+    detected_upstream=$(detect_upstream_dns "$UPSTREAM_DNS")
 
     # Print pretty header if pretty output format selected
     if [[ "$OUTPUT_FORMAT" == "pretty" ]]; then

@@ -542,7 +542,7 @@ TESTEOF
 }
 
 test_18_custom_pihole_and_skip_dnscrypt() {
-    echo "TEST 18: --resolver and --skip-dnscrypt flags"
+    echo "TEST 18: --pihole-dns and --skip-dnscrypt flags"
     setup_test_env
 
     cat > /tmp/test_custom_dns.sh << 'TESTEOF'
@@ -558,7 +558,7 @@ logger() { return 0; }
 export -f ip ping dig logger
 rm -f /tmp/dig_calls.log
 source "$SCRIPT_PATH"
-main --interfaces "eth0" --resolver "192.168.1.2" --skip-dnscrypt --format pretty
+main --interfaces "eth0" --pihole-dns "192.168.1.2" --skip-dnscrypt --format pretty
 TESTEOF
     chmod +x /tmp/test_custom_dns.sh
 
@@ -753,7 +753,7 @@ test_23_cli_flags() {
     fi
 
     out=$(bash "$SCRIPT_PATH" --help 2>&1)
-    if echo "$out" | echo "$out" | grep -q -- "--dashboard" && echo "$out" | grep -q -- "--resolver" && echo "$out" | grep -q -- "--upstream-host"; then
+    if echo "$out" | echo "$out" | grep -q -- "--dashboard" && echo "$out" | grep -q -- "--pihole-dns" && echo "$out" | grep -q -- "--upstream-dns"; then
         assert_pass "--help lists canonical flags"
     else
         assert_fail "--help missing canonical flags"

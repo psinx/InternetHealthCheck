@@ -34,7 +34,7 @@ Lightweight telemetry monitor for internet connectivity and DNS chain health on 
 ./internet_health_check.sh --format log
 
 # Client check against remote Pi-hole (bypasses dnscrypt hop)
-./internet_health_check.sh --resolver 192.168.1.2 --skip-dnscrypt
+./internet_health_check.sh --pihole-dns 192.168.1.2 --skip-dnscrypt
 
 # Run automated test suite
 ./tests/test_internet_health_check.sh
@@ -50,12 +50,12 @@ The health check validates an end-to-end 3-hop resolution chain alongside WAN re
 
 | Hop | Service | Default Endpoint | Role & Customization |
 | :---: | :--- | :--- | :--- |
-| **1** | **Pi-hole** *(Local Resolver)* | `127.0.0.1:53` | Primary DNS & ad-blocking. Override with `--resolver <IP>`. |
+| **1** | **Pi-hole** *(Local Resolver)* | `127.0.0.1:53` | Primary DNS & ad-blocking. Override with `--pihole-dns <IP>`. |
 | **2** | **dnscrypt-proxy** *(Optional)* | `127.0.0.1:5053` | Encrypted DoH/DoT transport. Bypass with `--skip-dnscrypt`. |
-| **3** | **Upstream WAN** | `1.1.1.1:53` / `1.1.1.3:53` | Direct upstream resolution. Customize via `--upstream-host <HOST>`. |
+| **3** | **Upstream WAN** | `1.1.1.1:53` / `1.1.1.3:53` | Direct upstream resolution. Customize via `--upstream-dns <HOST>`. |
 
 > [!NOTE]
-> **Non-Pi-hole Resolvers**: To test a generic setup (e.g., home router `192.168.1.1` or Unbound), pass `--resolver <IP> --skip-dnscrypt`. Hop 1 will query that resolver directly.
+> **Non-Pi-hole Resolvers**: To test a generic setup (e.g., home router `192.168.1.1` or Unbound), pass `--pihole-dns <IP> --skip-dnscrypt`. Hop 1 will query that resolver directly.
 
 ### System CLI Dependencies
 
@@ -100,7 +100,7 @@ Run health checks against a remote Pi-hole over LAN:
 ```bash
 git clone https://github.com/psinx/InternetHealthCheck.git InternetHealthCheck
 cd InternetHealthCheck
-./internet_health_check.sh --resolver 192.168.1.2 --skip-dnscrypt
+./internet_health_check.sh --pihole-dns 192.168.1.2 --skip-dnscrypt
 ```
 
 ---
@@ -113,10 +113,10 @@ cd InternetHealthCheck
 | `--dashboard` | `FILE` | Deploy web dashboard (`index.html`, `app.js`) at `FILE` and write `status.json` alongside it |
 | `--log-file` | `FILE` | Persistent disk log path (default: stdout or `logs/internet_health.log`) |
 | `--interfaces` | `IFACES` | Comma-separated list of interfaces to monitor (default: auto-detected) |
-| `--resolver` | `HOST` | Primary resolver (Pi-hole, router, Unbound) host/IP to query (default: `127.0.0.1` on Linux, LAN resolver on macOS) |
+| `--pihole-dns` | `HOST` | Primary resolver (Pi-hole, router, Unbound) host/IP to query (default: `127.0.0.1` on Linux, LAN resolver on macOS) |
 | `--dnscrypt-host` | `HOST` | dnscrypt-proxy host/IP to query (default: `127.0.0.1`) |
 | `--skip-dnscrypt` | None | Skip dnscrypt-proxy hop (recommended for client checks) |
-| `--upstream-host` | `HOST` | Upstream DNS server to query (default: auto-detected or `1.1.1.3`) |
+| `--upstream-dns` | `HOST` | Upstream DNS server to query (default: auto-detected or `1.1.1.3`) |
 | `--format` | `pretty\|log` | Output format: `pretty` (visual checklist) or `log` (timestamped syslog) |
 | `-h`, `--help` | None | Display help message |
 

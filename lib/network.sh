@@ -165,13 +165,13 @@ check_dns_chain() {
     CLOUDFLARE_LATENCY=-1
     
     # Target hosts (support custom/remote Pi-hole and dnscrypt hosts)
-    local pi_host="${RESOLVER_HOST:-127.0.0.1}"
+    local pi_host="${PIHOLE_DNS:-127.0.0.1}"
     local dc_host="${DNSCRYPT_HOST:-127.0.0.1}"
     local skip_dc="${SKIP_DNSCRYPT:-false}"
 
     # Detect configured upstream DNS server (e.g. 1.1.1.3 or 1.1.1.1)
     local upstream_ip
-    upstream_ip=$(detect_upstream_dns "${UPSTREAM_HOST:-}")
+    upstream_ip=$(detect_upstream_dns "${UPSTREAM_DNS:-}")
     
     # 1. Pi-hole Check
     if check_dns "$interface" "$pi_host" "$PIHOLE_PORT" "$local_ip"; then
@@ -215,7 +215,7 @@ log_dns_results() {
     local interface=$1 pihole_ok=$2 dnscrypt_ok=$3 cloudflare_ok=$4 upstream_ip=${5:-"1.1.1.1"}
     local upstream_name="Cloudflare"
     [[ "$upstream_ip" != 1.1.1.* && "$upstream_ip" != 1.0.0.* ]] && upstream_name="Upstream"
-    local pi_host="${RESOLVER_HOST:-127.0.0.1}"
+    local pi_host="${PIHOLE_DNS:-127.0.0.1}"
     local dc_host="${DNSCRYPT_HOST:-127.0.0.1}"
 
     [[ "$pihole_ok" == "false" ]] && log "[$interface] Test: Fail via Pi-hole ($pi_host:$PIHOLE_PORT)"
