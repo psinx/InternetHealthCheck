@@ -621,6 +621,68 @@ TESTEOF
     cleanup_test_env
 }
 
+test_20_flock_concurrency() {
+    echo "TEST 20: POSIX flock concurrency protection"
+    setup_test_env
+
+    local lock_path="/dev/shm/internet_health_check.lock"
+    [[ ! -d "/dev/shm" ]] && lock_path="/tmp/internet_health_check.lock"
+
+    local script_abs
+    script_abs=$(realpath "$SCRIPT_PATH" 2>/dev/null || echo "$SCRIPT_PATH")
+
+    if python3 -c "
+import subprocess, fcntl, os, sys
+lock_file = '$lock_path'
+with open(lock_file, 'w') as f:
+    fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    p = subprocess.run(['bash', '$script_abs', '--format', 'log'], capture_output=True, text=True)
+    if p.returncode != 0 or 'Another instance is already running' not in p.stderr:
+        print('Return code:', p.returncode, file=sys.stderr)
+        print('Stdout:', p.stdout, file=sys.stderr)
+        print('Stderr:', p.stderr, file=sys.stderr)
+        sys.exit(1)
+"; then
+        assert_pass "flock lock contention cleanly detects running instance and exits"
+    else
+        assert_fail "flock failed to handle concurrent invocation"
+    fi
+    cleanup_test_env
+}
+
+test_21_status_json_schema() {
+    echo "TEST 21: Consolidated single-pass status.json generation"
+    setup_test_env
+
+    local target_json="$TEST_HOME/status.json"
+    cat > /tmp/test_json.sh << TESTEOF
+#!/bin/bash
+HOME="$TEST_HOME"
+export HOME
+export RAM_STATE_FILE="$TEST_RAM_FILE"
+source "$SCRIPT_PATH"
+main --log-file "$TEST_LOG_FILE" --html-file "$target_json" --format log
+TESTEOF
+    chmod +x /tmp/test_json.sh
+    SCRIPT_PATH="$SCRIPT_PATH" TEST_HOME="$TEST_HOME" TEST_RAM_FILE="$TEST_RAM_FILE" TEST_LOG_FILE="$TEST_LOG_FILE" bash /tmp/test_json.sh >/dev/null 2>&1
+
+    if python3 -c "
+import json, sys
+with open('$target_json') as f:
+    d = json.load(f)
+assert all(k in d for k in ('timestamp', 'status', 'sla_percentage', 'interfaces', 'history', 'incidents'))
+assert isinstance(d['history'], list) and len(d['history']) == 3
+assert isinstance(d['incidents'], list)
+assert isinstance(d['sla_percentage'], (int, float))
+"; then
+        assert_pass "status.json contains valid consolidated payload with SLA, history, and incidents"
+    else
+        assert_fail "status.json payload validation failed"
+    fi
+    rm -f /tmp/test_json.sh
+    cleanup_test_env
+}
+
 #=============================================================================
 # Main
 #=============================================================================
@@ -741,6 +803,10 @@ main() {
     test_18_custom_pihole_and_skip_dnscrypt
     echo ""
     test_19_ram_fallback_and_record_run
+    echo ""
+    test_20_flock_concurrency
+    echo ""
+    test_21_status_json_schema
     
     echo ""
     echo "=========================================="

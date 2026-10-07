@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Internet Health | Pi-hole System</title>
+    <title>Internet Health Check · Pi-hole</title>
 
     <!-- Pi-hole Favicons -->
     <link rel="apple-touch-icon" href="/admin/img/favicons/apple-touch-icon.png" sizes="180x180">
@@ -174,15 +174,20 @@
                     <img class="logo-img" src="/admin/img/logo.svg" alt="Pi-hole logo" width="60" height="87">
                 </div>
                 <div class="pull-left info">
-                    <p>DNS Health</p>
+                    <p>Internet Health</p>
                     <span class="label label-success"><i class="fa fa-circle"></i> Active</span>
                 </div>
             </div>
             <ul class="sidebar-menu" data-widget="tree">
                 <li class="header text-uppercase">Navigation</li>
+                <li class="active">
+                    <a href="/">
+                        <i class="fa fa-fw menu-icon fa-heartbeat text-red"></i> <span>Overview</span>
+                    </a>
+                </li>
                 <li>
                     <a href="/admin/">
-                        <i class="fa fa-fw menu-icon fa-home"></i> <span>Dashboard</span>
+                        <i class="fa fa-fw menu-icon fa-home"></i> <span>Pi-hole Admin</span>
                     </a>
                 </li>
             </ul>
@@ -194,7 +199,7 @@
         <section class="content-header" style="padding-bottom: 15px;">
             <h1 style="margin: 0; font-size: 24px;">
                 Internet Health Check
-                <small style="opacity: 0.85; font-size: 14px;">Real-time DNS Chain & SLA Uptime</small>
+                <small style="opacity: 0.85; font-size: 14px;">Live WAN Link, DNS Chain & 72h Uptime</small>
             </h1>
         </section>
 
@@ -204,6 +209,7 @@
                 <div class="box-header with-border">
                     <h3 class="box-title"><i class="fas fa-network-wired"></i> Live DNS Chain Diagnostics</h3>
                     <div class="box-tools pull-right">
+                        <span id="header-last-updated" class="text-muted" style="font-size: 0.85em; margin-right: 10px;">Updated: just now</span>
                         <span id="header-status-label" class="label label-default" style="font-size: 0.9em;">● STATUS: Initializing...</span>
                     </div>
                 </div>
@@ -318,7 +324,10 @@
     <!-- Main Footer (required by AdminLTE for correct layout height calculation) -->
     <footer class="main-footer">
         <div class="text-center">
-            <strong><a href="https://github.com/psinx/InternetHealthCheck" target="_blank" rel="noopener noreferrer"><i class="fab fa-github"></i> Internet Health Check</a></strong> — Pi-hole v6 System Integration
+            <a href="https://github.com/psinx/InternetHealthCheck" target="_blank" rel="noopener noreferrer">
+                <i class="fab fa-github"></i> <strong>Internet Health Check</strong>
+            </a>
+            — Open-source extension for Pi-hole v6
         </div>
     </footer>
 </div>
@@ -327,6 +336,6 @@
 <script src="/admin/vendor/jquery/jquery.min.js"></script>
 <!-- AdminLTE layout engine (handles sidebar/content-wrapper height) -->
 <script src="/admin/vendor/adminLTE/adminlte.min.js"></script>
-<script src="/app.js?v=2.9"></script>
+<script src="/app.js?v=3.0"></script>
 </body>
 </html>

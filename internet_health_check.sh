@@ -172,6 +172,19 @@ main() {
         esac
     done
 
+    # Acquire exclusive non-blocking lock to prevent overlapping runs
+    local lock_file="${DEFAULT_RAM_DIR}/internet_health_check.lock"
+    local lock_fd=200
+    local locked=false
+    if command -v flock >/dev/null 2>&1; then
+        eval "exec ${lock_fd}>\"${lock_file}\""
+        if ! flock -n ${lock_fd}; then
+            echo "$TAG Another instance is already running. Exiting." >&2
+            return 0
+        fi
+        locked=true
+    fi
+
     # Resolve target DNS hosts (defaults to 127.0.0.1 on Linux, auto-detects LAN resolver on macOS)
     if [[ -z "$PIHOLE_HOST" ]]; then
         if [[ "$OSTYPE" == "darwin"* ]]; then
@@ -332,6 +345,11 @@ EOF
     if [[ -n "$HTML_FILE" ]]; then
         generate_status_json "$json_ifaces" "$HTML_FILE"
     fi
+
+    if [[ "$locked" == "true" ]]; then
+        flock -u ${lock_fd} 2>/dev/null || true
+        eval "exec ${lock_fd}>&-" 2>/dev/null || true
+    fi
 }
 
 generate_status_json() {
@@ -349,33 +367,12 @@ generate_status_json() {
         system_status="Degraded"
     fi
 
-    # Build 72h historical SLA grid combining RAM buffer and persistent disk log
-    local history_json
-    history_json=$(build_72h_history_json)
+    # Single-pass consolidated Python telemetry aggregator
+    generate_telemetry_status_json "$system_status" "$ifaces_json" "$json_tmp"
 
-    # Calculate 72h SLA percentage
-    local sla_pct
-    sla_pct=$(calculate_sla_percentage)
-
-    # Extract recent incidents combining disk log and RAM history (strictly last 72 hours)
-    local incidents_json
-    incidents_json=$(extract_incidents_json)
-
-    cat << EOF > "$json_tmp"
-{
-  "timestamp": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
-  "status": "$system_status",
-  "sla_percentage": $sla_pct,
-  "interfaces": {
-$ifaces_json
-  },
-  "history": $history_json,
-  "incidents": $incidents_json
-}
-EOF
     local real_target
     real_target=$(realpath "$json_target" 2>/dev/null || echo "$json_target")
-    cp -f "$json_tmp" "$real_target" 2>/dev/null || cat "$json_tmp" > "$real_target" 2>/dev/null || true
+    mv -f "$json_tmp" "$real_target" 2>/dev/null || cp -f "$json_tmp" "$real_target" 2>/dev/null || cat "$json_tmp" > "$real_target" 2>/dev/null || true
     rm -f "$json_tmp" 2>/dev/null || true
 
     # If output_target is an HTML file, copy index.html & app.js templates alongside status.json
@@ -389,11 +386,21 @@ EOF
     fi
 }
 
-build_72h_history_json() {
-    # Combine RAM history file and persistent disk log for exact local clock hour mapping and root-cause node health
+generate_telemetry_status_json() {
+    local system_status=$1 ifaces_json=$2 out_file=$3
+
     python3 -c '
-import os, json, time
-from datetime import datetime, timedelta
+import os, sys, json, time
+from datetime import datetime, timedelta, timezone
+
+system_status = sys.argv[1]
+raw_ifaces = sys.argv[2]
+out_file = sys.argv[3]
+
+try:
+    ifaces = json.loads("{" + raw_ifaces + "}")
+except Exception:
+    ifaces = {}
 
 ram_file = os.environ.get("RAM_STATE_FILE") or ("/tmp/internet_health_history.txt" if not os.path.exists("/dev/shm") else "/dev/shm/internet_health_history.txt")
 log_file = os.environ.get("LOG_FILE", "")
@@ -410,15 +417,22 @@ hours_nodes = {"Today": [{"pi": True, "dns": True, "cf": True} for _ in range(24
 now_dt = datetime.now()
 today_date = now_dt.date()
 current_hour = now_dt.hour
+now_ts = time.time()
+max_age_seconds = 72 * 3600
 
 # Mark future hours today as INACTIVE (gray)
 for h in range(current_hour + 1, 24):
     hours_status["Today"][h] = "INACTIVE"
 
-# 1. Read RAM history file (stores exact per-component check booleans)
+incidents = []
+seen_events = set()
+
+# 1. Read RAM history file
 if os.path.exists(ram_file):
-    with open(ram_file, "r") as f:
-        for line in f:
+    try:
+        with open(ram_file, "r") as f:
+            ram_lines = f.readlines()
+        for line in ram_lines:
             parts = line.strip().split(",")
             if len(parts) >= 4:
                 try:
@@ -442,194 +456,16 @@ if os.path.exists(ram_file):
                                     hours_status[day_label][hour_idx] = "WARNING"
                             else:
                                 hours_status[day_label][hour_idx] = "DANGER"
-                            if iface: hours_ifaces[day_label][hour_idx].add(iface)
+                            if iface:
+                                hours_ifaces[day_label][hour_idx].add(iface)
                             if not hours_earliest[day_label][hour_idx]:
                                 hours_earliest[day_label][hour_idx] = dt.strftime("%Y-%m-%d %H:%M:%S")
                 except Exception:
                     pass
-
-# 2. Read Persistent Disk Log (pinpoints exact root-cause failing components)
-candidate_logs = []
-if log_file and os.path.exists(log_file):
-    candidate_logs.append(log_file)
-script_dir = os.environ.get("SCRIPT_DIR", "")
-if script_dir:
-    default_log = os.path.join(script_dir, "logs", "internet_health.log")
-    if os.path.exists(default_log) and default_log not in candidate_logs:
-        candidate_logs.append(default_log)
-for path in ["/home/prateek/InternetHealthCheck/logs/internet_health.log", "/var/log/internet_health.log"]:
-    if os.path.exists(path) and path not in candidate_logs:
-        candidate_logs.append(path)
-
-for c_log in candidate_logs:
-    try:
-        with open(c_log, "r") as f:
-            for line in f:
-                if "[INTERNET-HEALTH-CHECK]" in line:
-                    parts = line.strip().split()
-                    if len(parts) >= 2:
-                        time_str = parts[0] + " " + parts[1]
-                        try:
-                            dt = datetime.strptime(time_str, "%Y-%m-%d %H:%M:%S")
-                            days_diff = (today_date - dt.date()).days
-                            if 0 <= days_diff < 3:
-                                day_label = ["Today", "Yesterday", "2 Days Ago"][days_diff]
-                                hour_idx = dt.hour
-                                
-                                # Track affected failing interfaces
-                                if "DOWN" in line or "Fail" in line:
-                                    if "[eth0]" in line: hours_ifaces[day_label][hour_idx].add("eth0")
-                                    if "[wlan0]" in line: hours_ifaces[day_label][hour_idx].add("wlan0")
-
-                                # Only trigger DANGER status for primary eth0 failure or system-wide WAN outage
-                                if "[eth0]" in line and ("CONNECTIVITY OUTAGE" in line or "Fail during Ping" in line):
-                                    hours_status[day_label][hour_idx] = "DANGER"
-                                    if not hours_earliest[day_label][hour_idx]:
-                                        hours_earliest[day_label][hour_idx] = time_str
-                                elif ("DOWN" in line or "Fail" in line) and hours_status[day_label][hour_idx] != "DANGER":
-                                    hours_status[day_label][hour_idx] = "WARNING"
-                                    if not hours_earliest[day_label][hour_idx]:
-                                        hours_earliest[day_label][hour_idx] = time_str
-                                    
-                                # Mark specific component failures across the chain
-                                if "Fail via Pi-hole" in line:
-                                    hours_nodes[day_label][hour_idx]["pi"] = False
-                                elif "Fail via dnscrypt" in line:
-                                    hours_nodes[day_label][hour_idx]["dns"] = False
-                                elif "Fail via Cloudflare" in line or "CONNECTIVITY OUTAGE" in line or "Fail during Ping" in line:
-                                    hours_nodes[day_label][hour_idx]["cf"] = False
-                        except Exception:
-                            pass
     except Exception:
         pass
 
-result = []
-for days_ago, label in [(2, "2 Days Ago"), (1, "Yesterday"), (0, "Today")]:
-    target_dt = now_dt - timedelta(days=days_ago)
-    date_str = target_dt.strftime("%-d %b")
-    day_cells = []
-    for h in range(24):
-        st = hours_status[label][h]
-        earliest = hours_earliest[label][h] if st != "OK" else ""
-        nodes = hours_nodes[label][h] if st != "OK" else {"pi": True, "dns": True, "cf": True}
-        iface_list = sorted(list(hours_ifaces[label][h])) if st != "OK" else []
-        iface_str = ", ".join(iface_list)
-        day_cells.append({
-            "hour": h,
-            "status": st,
-            "uptime": 100 if st == "OK" else 0,
-            "earliest_issue": earliest,
-            "iface": iface_str,
-            "pihole": nodes["pi"],
-            "dnscrypt": nodes["dns"],
-            "cloudflare": nodes["cf"]
-        })
-    result.append({"label": label, "date": date_str, "hours": day_cells})
-
-print(json.dumps(result))
-' 2>/dev/null || echo '[{"label":"2 Days Ago","hours":[]},{"label":"Yesterday","hours":[]},{"label":"Today","hours":[]}]'
-}
-
-calculate_sla_percentage() {
-    python3 -c '
-import os, json, time
-from datetime import datetime
-
-ram_file = os.environ.get("RAM_STATE_FILE") or ("/tmp/internet_health_history.txt" if not os.path.exists("/dev/shm") else "/dev/shm/internet_health_history.txt")
-log_file = os.environ.get("LOG_FILE", "")
-
-hours_status = {"Today": ["OK"]*24, "Yesterday": ["OK"]*24, "2 Days Ago": ["OK"]*24}
-
-now_dt = datetime.now()
-today_date = now_dt.date()
-current_hour = now_dt.hour
-
-for h in range(current_hour + 1, 24):
-    hours_status["Today"][h] = "INACTIVE"
-
-if ram_file and os.path.exists(ram_file):
-    try:
-        with open(ram_file, "r") as f:
-            for line in f:
-                parts = line.strip().split(",")
-                if len(parts) >= 4:
-                    try:
-                        ts = float(parts[0])
-                        dt = datetime.fromtimestamp(ts)
-                        conn = parts[2]
-                        dns = parts[3]
-                        days_diff = (today_date - dt.date()).days
-                        if 0 <= days_diff < 3:
-                            day_label = ["Today", "Yesterday", "2 Days Ago"][days_diff]
-                            hour_idx = dt.hour
-                            if conn == "DOWN" or dns == "false":
-                                hours_status[day_label][hour_idx] = "DANGER"
-                    except Exception:
-                        pass
-    except Exception:
-        pass
-
-candidate_logs = []
-if log_file and os.path.exists(log_file):
-    candidate_logs.append(log_file)
-script_dir = os.environ.get("SCRIPT_DIR", "")
-if script_dir:
-    default_log = os.path.join(script_dir, "logs", "internet_health.log")
-    if os.path.exists(default_log) and default_log not in candidate_logs:
-        candidate_logs.append(default_log)
-for path in ["/home/prateek/InternetHealthCheck/logs/internet_health.log", "/var/log/internet_health.log"]:
-    if os.path.exists(path) and path not in candidate_logs:
-        candidate_logs.append(path)
-
-for c_log in candidate_logs:
-    try:
-        with open(c_log, "r") as f:
-            for line in f:
-                if "[INTERNET-HEALTH-CHECK]" in line:
-                    parts = line.strip().split()
-                    if len(parts) >= 2:
-                        try:
-                            dt = datetime.strptime(parts[0] + " " + parts[1], "%Y-%m-%d %H:%M:%S")
-                            days_diff = (today_date - dt.date()).days
-                            if 0 <= days_diff < 3:
-                                day_label = ["Today", "Yesterday", "2 Days Ago"][days_diff]
-                                hour_idx = dt.hour
-                                if "DOWN" in line or "Fail" in line:
-                                    if "[wlan0]" not in line or "CONNECTIVITY OUTAGE" in line:
-                                        hours_status[day_label][hour_idx] = "DANGER"
-                        except Exception:
-                            pass
-    except Exception:
-        pass
-
-active_hours = 0
-healthy_hours = 0
-for label in ["2 Days Ago", "Yesterday", "Today"]:
-    for h in range(24):
-        st = hours_status[label][h]
-        if st != "INACTIVE":
-            active_hours += 1
-            if st == "OK":
-                healthy_hours += 1
-
-pct = (healthy_hours / active_hours * 100.0) if active_hours > 0 else 100.0
-print(f"{pct:.2f}")
-' 2>/dev/null || echo "100.00"
-}
-
-extract_incidents_json() {
-    python3 -c '
-import os, json, time
-from datetime import datetime
-
-ram_file = os.environ.get("RAM_STATE_FILE") or ("/tmp/internet_health_history.txt" if not os.path.exists("/dev/shm") else "/dev/shm/internet_health_history.txt")
-log_file = os.environ.get("LOG_FILE", "")
-incidents = []
-seen_events = set()
-now = time.time()
-max_age_seconds = 72 * 3600 # Strictly last 72 hours (259,200 seconds)
-
-# Parse persistent disk log first for reboot survival (strictly last 72 hours)
+# 2. Read Persistent Disk Log(s)
 candidate_logs = []
 if log_file and os.path.exists(log_file):
     candidate_logs.append(log_file)
@@ -646,7 +482,45 @@ for c_log in candidate_logs:
     try:
         with open(c_log, "r") as f:
             lines = f.readlines()
+        # For history grid (chronological)
+        for line in lines:
+            if "[INTERNET-HEALTH-CHECK]" in line:
+                parts = line.strip().split()
+                if len(parts) >= 2:
+                    time_str = parts[0] + " " + parts[1]
+                    try:
+                        dt = datetime.strptime(time_str, "%Y-%m-%d %H:%M:%S")
+                        days_diff = (today_date - dt.date()).days
+                        if 0 <= days_diff < 3:
+                            day_label = ["Today", "Yesterday", "2 Days Ago"][days_diff]
+                            hour_idx = dt.hour
+
+                            if "DOWN" in line or "Fail" in line:
+                                if "[eth0]" in line: hours_ifaces[day_label][hour_idx].add("eth0")
+                                if "[wlan0]" in line: hours_ifaces[day_label][hour_idx].add("wlan0")
+
+                            if "[eth0]" in line and ("CONNECTIVITY OUTAGE" in line or "Fail during Ping" in line):
+                                hours_status[day_label][hour_idx] = "DANGER"
+                                if not hours_earliest[day_label][hour_idx]:
+                                    hours_earliest[day_label][hour_idx] = time_str
+                            elif ("DOWN" in line or "Fail" in line) and hours_status[day_label][hour_idx] != "DANGER":
+                                hours_status[day_label][hour_idx] = "WARNING"
+                                if not hours_earliest[day_label][hour_idx]:
+                                    hours_earliest[day_label][hour_idx] = time_str
+
+                            if "Fail via Pi-hole" in line:
+                                hours_nodes[day_label][hour_idx]["pi"] = False
+                            elif "Fail via dnscrypt" in line:
+                                hours_nodes[day_label][hour_idx]["dns"] = False
+                            elif "Fail via Cloudflare" in line or "CONNECTIVITY OUTAGE" in line or "Fail during Ping" in line:
+                                hours_nodes[day_label][hour_idx]["cf"] = False
+                    except Exception:
+                        pass
+
+        # For incidents (reverse order for recency, up to 10 incidents within 72h)
         for line in reversed(lines):
+            if len(incidents) >= 10:
+                break
             if "[INTERNET-HEALTH-CHECK]" in line and "DOWN" in line:
                 parts = line.strip().split()
                 if len(parts) >= 2:
@@ -654,7 +528,7 @@ for c_log in candidate_logs:
                     try:
                         dt = datetime.strptime(time_str, "%Y-%m-%d %H:%M:%S")
                         ts = dt.timestamp()
-                        if (now - ts) <= max_age_seconds:
+                        if (now_ts - ts) <= max_age_seconds:
                             iface = "eth0" if "[eth0]" in line else ("wlan0" if "[wlan0]" in line else "eth0")
                             key = f"{time_str}_{iface}"
                             if key not in seen_events:
@@ -667,24 +541,24 @@ for c_log in candidate_logs:
                                     "description": "DOWN - CONNECTIVITY OUTAGE detected" if is_total_outage else f"Interface link down ({iface})",
                                     "duration": ""
                                 })
-                                if len(incidents) >= 10:
-                                    break
                     except Exception:
                         pass
     except Exception:
         pass
 
-# Supplement from RAM file if available (strictly last 72 hours)
+# Supplement incidents from RAM file if < 10
 if len(incidents) < 10 and os.path.exists(ram_file):
     try:
         with open(ram_file, "r") as f:
-            lines = f.readlines()
-        for line in reversed(lines):
+            ram_lines = f.readlines()
+        for line in reversed(ram_lines):
+            if len(incidents) >= 10:
+                break
             parts = line.strip().split(",")
             if len(parts) >= 4 and (parts[2] == "DOWN" or parts[3] == "false"):
                 try:
                     ts = float(parts[0])
-                    if (now - ts) <= max_age_seconds:
+                    if (now_ts - ts) <= max_age_seconds:
                         dt = datetime.fromtimestamp(ts)
                         ts_str = dt.strftime("%Y-%m-%d %H:%M:%S")
                         iface = parts[1] if len(parts) > 1 else "wlan0"
@@ -699,14 +573,120 @@ if len(incidents) < 10 and os.path.exists(ram_file):
                                 "description": "DOWN - CONNECTIVITY OUTAGE detected" if is_total_outage else f"Interface link down ({iface})",
                                 "duration": ""
                             })
-                            if len(incidents) >= 10:
-                                break
                 except Exception:
                     pass
     except Exception:
         pass
 
-print(json.dumps(incidents))
+# Calculate 72h SLA Percentage
+active_hours = 0
+healthy_hours = 0
+for label in ["2 Days Ago", "Yesterday", "Today"]:
+    for h in range(24):
+        st = hours_status[label][h]
+        if st != "INACTIVE":
+            active_hours += 1
+            if st == "OK":
+                healthy_hours += 1
+
+sla_pct = round((healthy_hours / active_hours * 100.0), 2) if active_hours > 0 else 100.0
+
+# Format History Result
+history_res = []
+for days_ago, label in [(2, "2 Days Ago"), (1, "Yesterday"), (0, "Today")]:
+    target_dt = now_dt - timedelta(days=days_ago)
+    date_str = target_dt.strftime("%-d %b")
+    day_cells = []
+    for h in range(24):
+        st = hours_status[label][h]
+        earliest = hours_earliest[label][h] if st != "OK" else ""
+        nodes = hours_nodes[label][h] if st != "OK" else {"pi": True, "dns": True, "cf": True}
+        iface_list = sorted(list(hours_ifaces[label][h])) if st != "OK" else []
+        day_cells.append({
+            "hour": h,
+            "status": st,
+            "uptime": 100 if st == "OK" else 0,
+            "earliest_issue": earliest,
+            "iface": ", ".join(iface_list),
+            "pihole": nodes["pi"],
+            "dnscrypt": nodes["dns"],
+            "cloudflare": nodes["cf"]
+        })
+    history_res.append({"label": label, "date": date_str, "hours": day_cells})
+
+now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+payload = {
+    "timestamp": now_iso,
+    "status": system_status,
+    "sla_percentage": sla_pct,
+    "interfaces": ifaces,
+    "history": history_res,
+    "incidents": incidents
+}
+
+with open(out_file, "w") as f:
+    json.dump(payload, f, indent=2)
+' "$system_status" "$ifaces_json" "$out_file" 2>/dev/null || true
+
+    # Fallback if Python encountered an unhandled issue
+    if [[ ! -s "$out_file" ]]; then
+        cat << EOF > "$out_file"
+{
+  "timestamp": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+  "status": "$system_status",
+  "sla_percentage": 100.0,
+  "interfaces": {
+$ifaces_json
+  },
+  "history": [{"label":"2 Days Ago","hours":[]},{"label":"Yesterday","hours":[]},{"label":"Today","hours":[]}],
+  "incidents": []
+}
+EOF
+    fi
+}
+
+build_72h_history_json() {
+    python3 -c '
+import json, os, sys
+target = os.environ.get("STATUS_JSON", "/var/www/html/health/status.json")
+if os.path.exists(target):
+    try:
+        with open(target) as f:
+            print(json.dumps(json.load(f).get("history", [])))
+            sys.exit(0)
+    except Exception:
+        pass
+print("[{\"label\":\"2 Days Ago\",\"hours\":[]},{\"label\":\"Yesterday\",\"hours\":[]},{\"label\":\"Today\",\"hours\":[]}]")
+' 2>/dev/null || echo '[{"label":"2 Days Ago","hours":[]},{"label":"Yesterday","hours":[]},{"label":"Today","hours":[]}]'
+}
+
+calculate_sla_percentage() {
+    python3 -c '
+import json, os, sys
+target = os.environ.get("STATUS_JSON", "/var/www/html/health/status.json")
+if os.path.exists(target):
+    try:
+        with open(target) as f:
+            print(f"{float(json.load(f).get(\"sla_percentage\", 100.0)):.2f}")
+            sys.exit(0)
+    except Exception:
+        pass
+print("100.00")
+' 2>/dev/null || echo "100.00"
+}
+
+extract_incidents_json() {
+    python3 -c '
+import json, os, sys
+target = os.environ.get("STATUS_JSON", "/var/www/html/health/status.json")
+if os.path.exists(target):
+    try:
+        with open(target) as f:
+            print(json.dumps(json.load(f).get("incidents", [])))
+            sys.exit(0)
+    except Exception:
+        pass
+print("[]")
 ' 2>/dev/null || echo '[]'
 }
 

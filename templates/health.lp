@@ -27,6 +27,9 @@ mg.include("scripts/lua/header.lp","r")
         .hour-cell.hour-danger { background-color: #dd4b39; opacity: 1; }
         .hour-cell.hour-inactive { background-color: #d2d6de; opacity: 0.7; }
 
+        /* Time Labels Header above Grid */
+        .time-header-row { display: flex; margin-left: 110px; margin-bottom: 6px; gap: 3px; font-size: 11px; font-weight: bold; }
+
         /* DNS Chain Node Styling */
         .chain-flow { 
             display: flex; 
@@ -103,6 +106,10 @@ mg.include("scripts/lua/header.lp","r")
             .connector-arrow { display: none; }
             .node-name { font-size: 0.95em; }
             .node-status-desc { font-size: 0.75em; }
+            .time-header-row span:nth-child(2),
+            .time-header-row span:nth-child(3),
+            .time-header-row span:nth-child(5),
+            .time-header-row span:nth-child(6) { display: none; }
         }
     </style>
 </head>
@@ -139,7 +146,7 @@ mg.include("scripts/lua/header.lp","r")
                     <img class="logo-img" src="<?=webhome?>img/logo.svg" alt="Pi-hole logo" width="45" height="65">
                 </div>
                 <div class="pull-left info" style="padding-left: 10px;">
-                    <p style="margin-bottom: 5px; font-weight: bold;">Pi-hole System</p>
+                    <p style="margin-bottom: 5px; font-weight: bold;">Internet Health</p>
                     <span class="label label-success"><i class="fa fa-circle"></i> Active</span>
                 </div>
             </div>
@@ -147,7 +154,7 @@ mg.include("scripts/lua/header.lp","r")
                 <li class="header text-uppercase">Navigation</li>
                 <li class="active">
                     <a href="/">
-                        <i class="fa fa-fw menu-icon fa-heartbeat text-red"></i> <span>Internet Health</span>
+                        <i class="fa fa-fw menu-icon fa-heartbeat text-red"></i> <span>Overview</span>
                     </a>
                 </li>
                 <li>
@@ -164,7 +171,7 @@ mg.include("scripts/lua/header.lp","r")
         <section class="content-header" style="padding-bottom: 15px;">
             <h1>
                 Internet Health Check
-                <small style="color: #aaa;">Real-time DNS Chain & SLA Uptime</small>
+                <small style="color: #aaa;">Live WAN Link, DNS Chain & 72h Uptime</small>
             </h1>
         </section>
 
@@ -174,6 +181,7 @@ mg.include("scripts/lua/header.lp","r")
                 <div class="box-header with-border">
                     <h3 class="box-title"><i class="fas fa-network-wired"></i> Live DNS Chain Diagnostics</h3>
                     <div class="box-tools pull-right">
+                        <span id="header-last-updated" class="text-muted" style="font-size: 0.85em; margin-right: 10px;">Updated: just now</span>
                         <span id="header-status-label" class="label label-default" style="font-size: 0.9em;">● STATUS: Initializing...</span>
                     </div>
                 </div>
@@ -196,7 +204,7 @@ mg.include("scripts/lua/header.lp","r")
                         <div id="arrow-3" class="connector-arrow">&rarr;</div>
                         <div id="node-cloudflare" class="chain-node">
                             <div class="node-name">Cloudflare (DoH)</div>
-                            <div id="node-cloudflare-desc" class="node-status-desc">1.1.1.1:53 (Pending)</div>
+                            <div id="node-cloudflare-desc" class="node-status-desc">1.1.1.3:53 (Pending)</div>
                         </div>
                     </div>
                 </div>
@@ -243,17 +251,30 @@ mg.include("scripts/lua/header.lp","r")
                     </div>
                 </div>
                 <div class="box-body">
+                    <!-- Hour Markers Header -->
+                    <div class="time-header-row">
+                        <div style="display: flex; flex-grow: 1; justify-content: space-between; font-family: monospace; font-size: 11px; opacity: 0.7;">
+                            <span>00:00</span>
+                            <span>04:00</span>
+                            <span>08:00</span>
+                            <span>12:00</span>
+                            <span>16:00</span>
+                            <span>20:00</span>
+                            <span>23:59</span>
+                        </div>
+                    </div>
+
                     <div class="grid-row">
-                        <div class="row-label">Today</div>
-                        <div class="row-cells" id="row-today"></div>
+                        <div class="row-label">2 Days Ago</div>
+                        <div class="row-cells" id="row-2daysago"></div>
                     </div>
                     <div class="grid-row">
                         <div class="row-label">Yesterday</div>
                         <div class="row-cells" id="row-yesterday"></div>
                     </div>
                     <div class="grid-row">
-                        <div class="row-label">2 Days Ago</div>
-                        <div class="row-cells" id="row-2daysago"></div>
+                        <div class="row-label">Today</div>
+                        <div class="row-cells" id="row-today"></div>
                     </div>
                 </div>
             </div>
@@ -275,7 +296,10 @@ mg.include("scripts/lua/header.lp","r")
     <!-- Main Footer -->
     <footer class="main-footer">
         <div class="text-center">
-            <strong><a href="https://github.com/psinx/InternetHealthCheck" target="_blank" rel="noopener noreferrer"><i class="fab fa-github"></i> Internet Health Check</a></strong> — Pi-hole v6 System Integration
+            <a href="https://github.com/psinx/InternetHealthCheck" target="_blank" rel="noopener noreferrer">
+                <i class="fab fa-github"></i> <strong>Internet Health Check</strong>
+            </a>
+            — Open-source extension for Pi-hole v6
         </div>
     </footer>
 </div>
@@ -304,22 +328,169 @@ mg.include("scripts/lua/header.lp","r")
             return now.getDate() + ' ' + months[now.getMonth()];
         }
 
+        function escapeHTML(str) {
+            if (str === null || str === undefined) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        // Relative Freshness State
+        let lastDataTimestamp = null;
+
+        function updateFreshnessTicker() {
+            const el = document.getElementById('header-last-updated');
+            if (!el || !lastDataTimestamp) return;
+
+            const diffSeconds = Math.max(0, Math.floor((Date.now() - lastDataTimestamp) / 1000));
+            let text = '';
+            if (diffSeconds < 10) {
+                text = 'Updated: just now';
+            } else if (diffSeconds < 60) {
+                text = 'Updated: ' + diffSeconds + 's ago';
+            } else if (diffSeconds < 3600) {
+                const mins = Math.floor(diffSeconds / 60);
+                text = 'Updated: ' + mins + 'm ago';
+            } else {
+                const hours = Math.floor(diffSeconds / 3600);
+                text = 'Updated: ' + hours + 'h ago';
+            }
+
+            if (diffSeconds >= 900) {
+                el.className = 'label label-warning';
+                el.textContent = '! ' + text + ' (Stale)';
+            } else {
+                el.className = 'text-muted';
+                el.textContent = text;
+            }
+        }
+
+        // Floating Tooltip Element
+        let tooltipEl = null;
+
+        function getOrCreateTooltip() {
+            if (!tooltipEl) {
+                tooltipEl = document.createElement('div');
+                tooltipEl.id = 'grid-custom-tooltip';
+                tooltipEl.style.cssText = 'position: absolute; display: none; background: #222d32; color: #fff; padding: 8px 12px; border-radius: 6px; font-size: 12px; box-shadow: 0 4px 14px rgba(0,0,0,0.4); z-index: 9999; pointer-events: none; white-space: nowrap; transition: opacity 0.15s ease-in-out; border: 1px solid #4b646f;';
+                document.body.appendChild(tooltipEl);
+            }
+            return tooltipEl;
+        }
+
+        function renderMiniChainHtml(hourData, dayLabel, timeRange) {
+            const safeDay = escapeHTML(dayLabel);
+            const safeTime = escapeHTML(timeRange);
+
+            if (hourData.status === 'INACTIVE') {
+                let html = '<div style="font-weight: bold; margin-bottom: 6px; border-bottom: 1px solid #4b646f; padding-bottom: 4px; display: flex; justify-content: space-between; align-items: center; gap: 15px;">' +
+                           '<span>' + safeDay + ' ' + safeTime + '</span>' +
+                           '<span class="label label-default">● Pending</span>' +
+                           '</div>';
+                html += '<div style="font-size: 11px; color: #8a8a8a; margin-top: 4px; text-align: center; background: #1a2226; padding: 6px 8px; border-radius: 4px;">' +
+                        'Monitoring slot pending' +
+                        '</div>';
+                return html;
+            }
+
+            const isOk = hourData.status === 'OK';
+            const piOk = isOk ? true : (hourData.pihole !== false);
+            const dnsOk = isOk ? true : (hourData.dnscrypt !== false);
+            const cfOk = isOk ? true : (hourData.cloudflare !== false);
+
+            const badgeClass = isOk ? 'label label-success' : (hourData.status === 'DANGER' ? 'label label-danger' : (hourData.status === 'WARNING' ? 'label label-warning' : 'label label-default'));
+            const badgeSymbol = isOk ? '✓ ' : (hourData.status === 'DANGER' ? '✕ ' : '! ');
+            const badgeText = isOk ? '100% Operational' : (hourData.status === 'DANGER' ? 'Outage' : escapeHTML(hourData.status));
+
+            const piStyle = piOk ? 'color: #00a65a;' : 'color: #dd4b39;';
+            const dnsStyle = dnsOk ? 'color: #00a65a;' : 'color: #dd4b39;';
+            const cfStyle = cfOk ? 'color: #00a65a;' : 'color: #dd4b39;';
+
+            const piLabel = 'Pi-hole (' + (piOk ? '✓ OK' : '✕ FAIL') + ')';
+            const dnsLabel = 'dnscrypt (' + (dnsOk ? '✓ OK' : '✕ FAIL') + ')';
+            const cfLabel = 'Cloudflare (' + (cfOk ? '✓ OK' : '✕ FAIL') + ')';
+
+            let html = '<div style="font-weight: bold; margin-bottom: 6px; border-bottom: 1px solid #4b646f; padding-bottom: 4px; display: flex; justify-content: space-between; align-items: center; gap: 15px;">' +
+                       '<span>' + safeDay + ' ' + safeTime + '</span>' +
+                       '<span class="' + badgeClass + '">' + badgeSymbol + badgeText + '</span>' +
+                       '</div>';
+
+            html += '<div style="display: flex; align-items: center; gap: 6px; margin: 6px 0; background: #1a2226; padding: 5px 8px; border-radius: 4px; font-family: monospace; font-size: 11px;">' +
+                    '<span style="color: #00a65a; font-weight: bold;">Client</span>' +
+                    '<span style="color: #777;">&rarr;</span>' +
+                    '<span style="' + piStyle + ' font-weight: bold;">' + piLabel + '</span>' +
+                    '<span style="color: #777;">&rarr;</span>' +
+                    '<span style="' + dnsStyle + ' font-weight: bold;">' + dnsLabel + '</span>' +
+                    '<span style="color: #777;">&rarr;</span>' +
+                    '<span style="' + cfStyle + ' font-weight: bold;">' + cfLabel + '</span>' +
+                    '</div>';
+
+            if (!isOk) {
+                const ifaceText = escapeHTML(hourData.iface ? hourData.iface : 'eth0, wlan0');
+                html += '<div style="font-size: 11px; color: #f39c12; margin-top: 4px;">Affected Interface(s): <strong>' + ifaceText + '</strong></div>';
+                if (hourData.earliest_issue) {
+                    html += '<div style="font-size: 11px; color: #b8c7ce; margin-top: 2px;">First issue at <strong>' + escapeHTML(hourData.earliest_issue) + '</strong></div>';
+                }
+            } else {
+                html += '<div style="font-size: 11px; color: #b8c7ce; margin-top: 4px;">Tested Interfaces: <strong>eth0, wlan0</strong></div>';
+            }
+
+            return html;
+        }
+
+        function attachTooltipEvents(cell, hourData, dayLabel, timeRange) {
+            cell.addEventListener('mouseenter', function(e) {
+                const tip = getOrCreateTooltip();
+                tip.innerHTML = renderMiniChainHtml(hourData, dayLabel, timeRange);
+                tip.style.display = 'block';
+                tip.style.opacity = '1';
+                positionTooltip(e);
+            });
+
+            cell.addEventListener('mousemove', function(e) {
+                positionTooltip(e);
+            });
+
+            cell.addEventListener('mouseleave', function() {
+                if (tooltipEl) {
+                    tooltipEl.style.opacity = '0';
+                    tooltipEl.style.display = 'none';
+                }
+            });
+        }
+
+        function positionTooltip(e) {
+            if (!tooltipEl) return;
+            const x = e.pageX;
+            const y = e.pageY - 55;
+            tooltipEl.style.left = (x - (tooltipEl.offsetWidth / 2)) + 'px';
+            tooltipEl.style.top = y + 'px';
+        }
+
         function renderEmptyGrid() {
-            const rows = ['row-today', 'row-yesterday', 'row-2daysago'];
+            const rows = ['row-2daysago', 'row-yesterday', 'row-today'];
+            const labels = { 'row-today': 'Today', 'row-yesterday': 'Yesterday', 'row-2daysago': '2 Days Ago' };
             rows.forEach(rowId => {
                 const container = document.getElementById(rowId);
                 if (!container) return;
                 container.innerHTML = '';
+                const dayLabel = getDisplayDate(labels[rowId]);
                 for (let h = 0; h < 24; h++) {
                     const cell = document.createElement('div');
                     cell.className = 'hour-cell hour-inactive';
+                    const timeRange = formatHourRange(h);
+                    const defaultData = { status: 'INACTIVE', pihole: true, dnscrypt: true, cloudflare: true };
+                    attachTooltipEvents(cell, defaultData, dayLabel, timeRange);
                     container.appendChild(cell);
                 }
             });
         }
 
         async function refreshDashboard() {
-            const paths = ['/health/status.json', '/status.json', '/dev/shm/status.json'];
+            const paths = ['/health/status.json', 'status.json', '/status.json', '/dev/shm/status.json'];
             let data = null;
             for (const path of paths) {
                 try {
@@ -334,22 +505,38 @@ mg.include("scripts/lua/header.lp","r")
         }
 
         function updateUI(data) {
+            if (data.timestamp) {
+                const parsed = new Date(data.timestamp);
+                if (!isNaN(parsed.getTime())) {
+                    lastDataTimestamp = parsed.getTime();
+                    updateFreshnessTicker();
+                }
+            }
+
             let activeStatus = (data.status === 'Operational' || data.status === 'Healthy') ? 'Healthy' : (data.status || 'Healthy');
             if (data.interfaces) {
                 const ethOk = !data.interfaces.eth0 || !data.interfaces.eth0.exists || (data.interfaces.eth0.connectivity === 'OK' && data.interfaces.eth0.dns_ok !== false);
                 const wlanOk = !data.interfaces.wlan0 || !data.interfaces.wlan0.exists || (data.interfaces.wlan0.connectivity === 'OK');
                 activeStatus = (ethOk && wlanOk) ? 'Healthy' : 'Degraded';
+                if (data.interfaces.eth0 && data.interfaces.eth0.connectivity === 'DOWN' && 
+                    (!data.interfaces.wlan0 || !data.interfaces.wlan0.exists || data.interfaces.wlan0.connectivity === 'DOWN')) {
+                    activeStatus = 'Outage';
+                }
             }
             const headerLabel = document.getElementById('header-status-label');
             if (headerLabel) {
+                let symbol = '●';
                 if (activeStatus === 'Healthy') {
                     headerLabel.className = 'label label-success';
+                    symbol = '✓';
                 } else if (activeStatus === 'Degraded' || activeStatus === 'Partial Outage' || activeStatus === 'DNS Issues') {
                     headerLabel.className = 'label label-warning';
+                    symbol = '!';
                 } else {
                     headerLabel.className = 'label label-danger';
+                    symbol = '✕';
                 }
-                headerLabel.textContent = '● STATUS: ' + activeStatus;
+                headerLabel.textContent = symbol + ' STATUS: ' + activeStatus;
             }
 
             let activeIface = null;
@@ -367,13 +554,13 @@ mg.include("scripts/lua/header.lp","r")
                     let allOnline = true;
                     if (eth && eth.exists) {
                         const isOnline = (eth.connectivity === 'OK');
-                        parts.push('eth0: ' + (isOnline ? 'Online' : 'Down'));
+                        parts.push('eth0: ' + (isOnline ? '✓ Online' : '✕ Down'));
                         if (isOnline) anyOnline = true;
                         else allOnline = false;
                     }
                     if (wlan && wlan.exists) {
                         const isOnline = (wlan.connectivity === 'OK');
-                        parts.push('wlan0: ' + (isOnline ? 'Online' : 'Down'));
+                        parts.push('wlan0: ' + (isOnline ? '✓ Online' : '✕ Down'));
                         if (isOnline) anyOnline = true;
                         else allOnline = false;
                     }
@@ -394,7 +581,8 @@ mg.include("scripts/lua/header.lp","r")
                     const lossVal = activeIface.packet_loss !== undefined ? activeIface.packet_loss : 0.0;
                     const lossEl = document.getElementById('if-loss');
                     if (lossEl) {
-                        lossEl.textContent = lossVal.toFixed(1) + '%';
+                        const lossSym = (lossVal === 0.0) ? '✓ ' : ((lossVal < 50.0) ? '! ' : '✕ ');
+                        lossEl.textContent = lossSym + lossVal.toFixed(1) + '%';
                         if (lossVal === 0.0) {
                             lossEl.className = 'label label-success';
                         } else if (lossVal < 50.0) {
@@ -434,14 +622,18 @@ mg.include("scripts/lua/header.lp","r")
                 const slaEl = document.getElementById('grid-uptime-pct');
                 if (slaEl) {
                     const val = Number(data.sla_percentage);
-                    slaEl.textContent = '● SLA: ' + val.toFixed(2) + '%';
+                    let sym = '✓';
                     if (val < 95.0) {
                         slaEl.className = 'label label-danger';
+                        sym = '✕';
                     } else if (val < 99.0) {
                         slaEl.className = 'label label-warning';
+                        sym = '!';
                     } else {
                         slaEl.className = 'label label-success';
+                        sym = '✓';
                     }
+                    slaEl.textContent = sym + ' SLA: ' + val.toFixed(2) + '%';
                 }
             }
         }
@@ -449,10 +641,10 @@ mg.include("scripts/lua/header.lp","r")
         function updateInterfaceRow(elementId, iface) {
             const el = document.getElementById(elementId);
             if (!el) return;
-            if (!iface || !iface.exists) { el.textContent = 'Inactive'; el.className = 'label label-default'; }
-            else if (iface.connectivity === 'DOWN') { el.textContent = 'Offline'; el.className = 'label label-danger'; }
-            else if (iface.dns_ok === false) { el.textContent = 'DNS Issue'; el.className = 'label label-warning'; }
-            else { el.textContent = 'Online'; el.className = 'label label-success'; }
+            if (!iface || !iface.exists) { el.textContent = '● Inactive'; el.className = 'label label-default'; }
+            else if (iface.connectivity === 'DOWN') { el.textContent = '✕ Offline'; el.className = 'label label-danger'; }
+            else if (iface.dns_ok === false) { el.textContent = '! DNS Issue'; el.className = 'label label-warning'; }
+            else { el.textContent = '✓ Online'; el.className = 'label label-success'; }
         }
 
         function updateNodeState(nodeId, descId, isOk, portLabel) {
@@ -460,7 +652,7 @@ mg.include("scripts/lua/header.lp","r")
             const descEl = document.getElementById(descId);
             if (!nodeEl || !descEl) return;
             nodeEl.className = isOk ? 'chain-node node-ok' : 'chain-node node-fail';
-            descEl.textContent = portLabel + (isOk ? ' (OK)' : ' (FAIL)');
+            descEl.textContent = portLabel + (isOk ? ' (✓ OK)' : ' (✕ FAIL)');
         }
 
         function updateArrowState(arrowId, isOk) {
@@ -473,13 +665,13 @@ mg.include("scripts/lua/header.lp","r")
             const el = document.getElementById(elId);
             if (!el) return;
             if (val === undefined || val === -1 || val === null) {
-                el.textContent = 'TIMEOUT'; el.className = 'label label-danger';
+                el.textContent = '✕ TIMEOUT'; el.className = 'label label-danger';
             } else if (val > 150) {
-                el.textContent = val + 'ms'; el.className = 'label label-danger';
+                el.textContent = '✕ ' + val + 'ms'; el.className = 'label label-danger';
             } else if (val > 60) {
-                el.textContent = val + 'ms'; el.className = 'label label-warning';
+                el.textContent = '! ' + val + 'ms'; el.className = 'label label-warning';
             } else {
-                el.textContent = val + 'ms'; el.className = 'label label-success';
+                el.textContent = '✓ ' + val + 'ms'; el.className = 'label label-success';
             }
         }
 
@@ -500,8 +692,10 @@ mg.include("scripts/lua/header.lp","r")
                     else if (hourData.status === 'DANGER') cellClass += ' hour-danger';
                     else cellClass += ' hour-inactive';
                     cell.className = cellClass;
+                    
                     const timeRange = formatHourRange(hourData.hour);
-                    cell.title = dayLabel + ' ' + timeRange + ' (' + (hourData.status === 'OK' ? '100% Operational' : hourData.status) + ')';
+                    attachTooltipEvents(cell, hourData, dayLabel, timeRange);
+                    
                     container.appendChild(cell);
                 });
             });
@@ -518,10 +712,26 @@ mg.include("scripts/lua/header.lp","r")
             incidents.forEach(item => {
                 const row = document.createElement('div');
                 row.style.cssText = 'padding: 8px 10px; border-bottom: 1px dashed rgba(128,128,128,0.3); font-size: 0.95em;';
-                const badgeClass = item.badge === 'Outage' ? 'label label-danger' : 'label label-warning';
-                row.innerHTML = '<span class="' + badgeClass + '" style="margin-right: 8px;">' + item.badge + '</span>' +
-                                '<strong>' + item.timestamp + '</strong> — ' +
-                                '<span style="opacity: 0.85;">' + item.description + '</span>';
+                const isOutage = item.badge === 'Outage';
+                
+                const badge = document.createElement('span');
+                badge.className = isOutage ? 'label label-danger' : 'label label-warning';
+                badge.style.marginRight = '8px';
+                badge.textContent = (isOutage ? '✕ ' : '! ') + (item.badge || 'Event');
+                
+                const ts = document.createElement('strong');
+                ts.textContent = item.timestamp || '';
+                
+                const sep = document.createTextNode(' — ');
+                
+                const desc = document.createElement('span');
+                desc.style.opacity = '0.85';
+                desc.textContent = item.description || '';
+                
+                row.appendChild(badge);
+                row.appendChild(ts);
+                row.appendChild(sep);
+                row.appendChild(desc);
                 container.appendChild(row);
             });
         }
@@ -543,6 +753,7 @@ mg.include("scripts/lua/header.lp","r")
 
         refreshDashboard();
         setInterval(refreshDashboard, 30000);
+        setInterval(updateFreshnessTicker, 5000);
     })();
 </script>
 </body>
