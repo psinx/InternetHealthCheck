@@ -48,12 +48,8 @@ Lightweight Bash and telemetry monitor for internet connectivity and DNS chain h
 
 2. **Deploy web assets:**
    ```bash
-   # Standalone webroot dashboard (http://<pi-ip>/)
    sudo cp -f templates/dashboard.html /var/www/html/index.html
    sudo cp -f templates/app.js /var/www/html/app.js
-
-   # Native Pi-hole v6 AdminLTE page (http://<pi-ip>/admin/health.lp)
-   sudo cp -f templates/health.lp /var/www/html/admin/health.lp
    ```
 
 3. **Configure cron automation:**
