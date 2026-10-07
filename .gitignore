@@ -12,3 +12,5 @@ status.json
 .claude/
 .copilot/
 scratch/
+.grok/
+.opencode/

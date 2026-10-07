@@ -160,10 +160,20 @@
             const ethOk = !data.interfaces.eth0 || !data.interfaces.eth0.exists || (data.interfaces.eth0.connectivity === 'OK' && data.interfaces.eth0.dns_ok !== false);
             const wlanOk = !data.interfaces.wlan0 || !data.interfaces.wlan0.exists || (data.interfaces.wlan0.connectivity === 'OK');
             activeStatus = (ethOk && wlanOk) ? 'Healthy' : 'Degraded';
+            if (data.interfaces.eth0 && data.interfaces.eth0.connectivity === 'DOWN' && 
+                (!data.interfaces.wlan0 || !data.interfaces.wlan0.exists || data.interfaces.wlan0.connectivity === 'DOWN')) {
+                activeStatus = 'Outage';
+            }
         }
         const headerLabel = document.getElementById('header-status-label');
         if (headerLabel) {
-            headerLabel.className = activeStatus === 'Healthy' ? 'label label-success' : 'label label-danger';
+            if (activeStatus === 'Healthy') {
+                headerLabel.className = 'label label-success';
+            } else if (activeStatus === 'Degraded' || activeStatus === 'Partial Outage' || activeStatus === 'DNS Issues') {
+                headerLabel.className = 'label label-warning';
+            } else {
+                headerLabel.className = 'label label-danger';
+            }
             headerLabel.textContent = '● STATUS: ' + activeStatus;
         }
 
@@ -173,13 +183,33 @@
             else if (data.interfaces.wlan0 && data.interfaces.wlan0.exists) activeIface = data.interfaces.wlan0;
             
             const clientDesc = document.getElementById('node-client-desc');
-            if (clientDesc) {
+            const clientNode = document.getElementById('node-client');
+            if (clientDesc && clientNode) {
                 const eth = data.interfaces.eth0;
                 const wlan = data.interfaces.wlan0;
                 let parts = [];
-                if (eth && eth.exists) parts.push('eth0: ' + (eth.connectivity === 'OK' ? 'Online' : 'Down'));
-                if (wlan && wlan.exists) parts.push('wlan0: ' + (wlan.connectivity === 'OK' ? 'Online' : 'Down'));
+                let anyOnline = false;
+                let allOnline = true;
+                if (eth && eth.exists) {
+                    const isOnline = (eth.connectivity === 'OK');
+                    parts.push('eth0: ' + (isOnline ? 'Online' : 'Down'));
+                    if (isOnline) anyOnline = true;
+                    else allOnline = false;
+                }
+                if (wlan && wlan.exists) {
+                    const isOnline = (wlan.connectivity === 'OK');
+                    parts.push('wlan0: ' + (isOnline ? 'Online' : 'Down'));
+                    if (isOnline) anyOnline = true;
+                    else allOnline = false;
+                }
                 clientDesc.textContent = parts.length > 0 ? parts.join(' | ') : 'Local Machine (Active)';
+                if (allOnline) {
+                    clientNode.className = 'chain-node node-ok';
+                } else if (anyOnline) {
+                    clientNode.className = 'chain-node node-warning';
+                } else {
+                    clientNode.className = 'chain-node node-fail';
+                }
             }
 
             updateInterfaceRow('if-eth', data.interfaces.eth0);
@@ -190,20 +220,36 @@
                 const lossEl = document.getElementById('if-loss');
                 if (lossEl) {
                     lossEl.textContent = lossVal.toFixed(1) + '%';
-                    lossEl.className = 'label ' + (lossVal > 0 ? 'label-danger' : 'label-success');
+                    if (lossVal === 0.0) {
+                        lossEl.className = 'label label-success';
+                    } else if (lossVal < 50.0) {
+                        lossEl.className = 'label label-warning';
+                    } else {
+                        lossEl.className = 'label label-danger';
+                    }
                 }
             }
         }
 
-        if (activeIface && activeIface.connectivity === 'OK') {
+        // Always update the DNS chain nodes and latencies even during outages
+        if (activeIface) {
+            const isConnOk = (activeIface.connectivity === 'OK');
             const upstreamIp = (activeIface && activeIface.upstream_ip) ? activeIface.upstream_ip : '1.1.1.3';
+            
             updateNodeState('node-pihole', 'node-pihole-desc', activeIface.pihole, '127.0.0.1:53');
             updateNodeState('node-dnscrypt', 'node-dnscrypt-desc', activeIface.dnscrypt, '127.0.0.1:5053');
-            updateNodeState('node-cloudflare', 'node-cloudflare-desc', activeIface.cloudflare, upstreamIp + ':53');
             
+            // Cloudflare upstream fails if either cloudflare check failed OR internet ping is DOWN
+            const cfOk = (activeIface.cloudflare && isConnOk);
+            updateNodeState('node-cloudflare', 'node-cloudflare-desc', cfOk, upstreamIp + ':53');
+            
+            updateArrowState('arrow-1', activeIface.pihole);
+            updateArrowState('arrow-2', activeIface.dnscrypt);
+            updateArrowState('arrow-3', cfOk);
+
             updateLatencyText('lat-pi', activeIface.latency_pihole);
             updateLatencyText('lat-dns', activeIface.latency_dnscrypt);
-            updateLatencyText('lat-cf', activeIface.latency_cloudflare);
+            updateLatencyText('lat-cf', isConnOk ? activeIface.latency_cloudflare : -1);
         }
 
         if (data.history) renderHistoricalGrid(data.history);
@@ -231,6 +277,7 @@
         if (!el) return;
         if (!iface || !iface.exists) { el.textContent = 'Inactive'; el.className = 'label label-default'; }
         else if (iface.connectivity === 'DOWN') { el.textContent = 'Offline'; el.className = 'label label-danger'; }
+        else if (iface.dns_ok === false) { el.textContent = 'DNS Issue'; el.className = 'label label-warning'; }
         else { el.textContent = 'Online'; el.className = 'label label-success'; }
     }
 
@@ -238,8 +285,14 @@
         const nodeEl = document.getElementById(nodeId);
         const descEl = document.getElementById(descId);
         if (!nodeEl || !descEl) return;
-        nodeEl.className = isOk ? 'chain-node' : 'chain-node node-fail';
+        nodeEl.className = isOk ? 'chain-node node-ok' : 'chain-node node-fail';
         descEl.textContent = portLabel + (isOk ? ' (OK)' : ' (FAIL)');
+    }
+
+    function updateArrowState(arrowId, isOk) {
+        const arrowEl = document.getElementById(arrowId);
+        if (!arrowEl) return;
+        arrowEl.className = isOk ? 'connector-arrow arrow-ok' : 'connector-arrow arrow-fail';
     }
 
     function updateLatencyText(elId, val) {
@@ -247,6 +300,10 @@
         if (!el) return;
         if (val === undefined || val === -1 || val === null) {
             el.textContent = 'TIMEOUT'; el.className = 'label label-danger';
+        } else if (val > 150) {
+            el.textContent = val + 'ms'; el.className = 'label label-danger';
+        } else if (val > 60) {
+            el.textContent = val + 'ms'; el.className = 'label label-warning';
         } else {
             el.textContent = val + 'ms'; el.className = 'label label-success';
         }

@@ -33,6 +33,13 @@ mg.include("scripts/lua/header.lp","r")
             .hour-cell.hour-warning { background-color: #f39c12; opacity: 1; }
             .hour-cell.hour-danger { background-color: #dd4b39; opacity: 1; }
             .hour-cell.hour-inactive { background-color: #4b646f; opacity: 0.45; }
+            .chain-node { border-color: #4b646f; }
+            .chain-node.node-ok { border-color: #00a65a; }
+            .chain-node.node-warning { border-color: #f39c12; }
+            .chain-node.node-fail { border-color: #dd4b39; }
+            .connector-arrow { color: #4b646f; }
+            .connector-arrow.arrow-ok { color: #00a65a; }
+            .connector-arrow.arrow-fail { color: #dd4b39; }
         }
 
         /* DNS Chain Node Styling */
@@ -44,7 +51,7 @@ mg.include("scripts/lua/header.lp","r")
             padding: 15px 5px; 
         }
         .chain-node { 
-            border: 2px solid #00a65a; 
+            border: 2px solid #d2d6de; 
             border-radius: 6px; 
             padding: 14px 12px; 
             flex: 1 1 0; 
@@ -55,7 +62,10 @@ mg.include("scripts/lua/header.lp","r")
             align-items: center;
             text-align: center; 
             box-sizing: border-box;
+            transition: border-color 0.2s;
         }
+        .chain-node.node-ok { border-color: #00a65a; }
+        .chain-node.node-warning { border-color: #f39c12; }
         .chain-node.node-fail { border-color: #dd4b39; }
         .node-name { font-weight: bold; font-size: 1.1em; }
         .node-status-desc { font-size: 0.85em; opacity: 0.7; font-family: monospace; margin-top: 4px; word-break: break-word; }
@@ -64,10 +74,13 @@ mg.include("scripts/lua/header.lp","r")
             align-items: center; 
             justify-content: center; 
             font-size: 1.5em; 
-            color: #00a65a; 
+            color: #d2d6de; 
             font-weight: bold; 
             flex-shrink: 0; 
+            transition: color 0.2s;
         }
+        .connector-arrow.arrow-ok { color: #00a65a; }
+        .connector-arrow.arrow-fail { color: #dd4b39; }
 
         /* Mobile: uniform 2x2 grid */
         @media (max-width: 767px) {
@@ -158,29 +171,29 @@ mg.include("scripts/lua/header.lp","r")
                 <div class="box-header with-border">
                     <h3 class="box-title"><i class="fas fa-network-wired"></i> Live DNS Chain Diagnostics</h3>
                     <div class="box-tools pull-right">
-                        <span id="header-status-label" class="label label-success" style="font-size: 0.9em;">● STATUS: Healthy</span>
+                        <span id="header-status-label" class="label label-default" style="font-size: 0.9em;">● STATUS: Initializing...</span>
                     </div>
                 </div>
                 <div class="box-body">
                     <div class="chain-flow">
                         <div id="node-client" class="chain-node">
                             <div class="node-name">CLIENT</div>
-                            <div class="node-status-desc">Local Machine (Active)</div>
+                            <div class="node-status-desc" id="node-client-desc">Loading...</div>
                         </div>
                         <div id="arrow-1" class="connector-arrow">&rarr;</div>
                         <div id="node-pihole" class="chain-node">
                             <div class="node-name">Pi-hole</div>
-                            <div id="node-pihole-desc" class="node-status-desc">127.0.0.1:53 (OK)</div>
+                            <div id="node-pihole-desc" class="node-status-desc">127.0.0.1:53 (Pending)</div>
                         </div>
                         <div id="arrow-2" class="connector-arrow">&rarr;</div>
                         <div id="node-dnscrypt" class="chain-node">
                             <div class="node-name">dnscrypt-proxy</div>
-                            <div id="node-dnscrypt-desc" class="node-status-desc">127.0.0.1:5053 (OK)</div>
+                            <div id="node-dnscrypt-desc" class="node-status-desc">127.0.0.1:5053 (Pending)</div>
                         </div>
                         <div id="arrow-3" class="connector-arrow">&rarr;</div>
                         <div id="node-cloudflare" class="chain-node">
                             <div class="node-name">Cloudflare (DoH)</div>
-                            <div id="node-cloudflare-desc" class="node-status-desc">1.1.1.1:53 (OK)</div>
+                            <div id="node-cloudflare-desc" class="node-status-desc">1.1.1.1:53 (Pending)</div>
                         </div>
                     </div>
                 </div>
@@ -191,7 +204,7 @@ mg.include("scripts/lua/header.lp","r")
                 <div class="box-header with-border">
                     <h3 class="box-title"><i class="fas fa-history"></i> Historical Uptime (Last 72 Hours)</h3>
                     <div class="box-tools pull-right">
-                        <span id="grid-uptime-pct" class="label label-warning" style="font-size: 0.9em;">● SLA: 96.61%</span>
+                        <span id="grid-uptime-pct" class="label label-default" style="font-size: 0.9em;">● SLA: --%</span>
                     </div>
                 </div>
                 <div class="box-body">
@@ -219,9 +232,9 @@ mg.include("scripts/lua/header.lp","r")
                         </div>
                         <div class="box-body">
                             <table class="table table-bordered">
-                                <tr><td>Pi-hole DNS Hop</td><td><span id="lat-pi" class="label label-success">4ms</span></td></tr>
-                                <tr><td>dnscrypt-proxy Hop</td><td><span id="lat-dns" class="label label-success">0ms</span></td></tr>
-                                <tr><td>Cloudflare Upstream</td><td><span id="lat-cf" class="label label-success">16ms</span></td></tr>
+                                <tr><td>Pi-hole DNS Hop</td><td><span id="lat-pi" class="label label-default">--</span></td></tr>
+                                <tr><td>dnscrypt-proxy Hop</td><td><span id="lat-dns" class="label label-default">--</span></td></tr>
+                                <tr><td>Cloudflare Upstream</td><td><span id="lat-cf" class="label label-default">--</span></td></tr>
                             </table>
                         </div>
                     </div>
@@ -233,9 +246,9 @@ mg.include("scripts/lua/header.lp","r")
                         </div>
                         <div class="box-body">
                             <table class="table table-bordered">
-                                <tr><td>Wired Link (eth0)</td><td><span id="if-eth" class="label label-success">Online</span></td></tr>
-                                <tr><td>Wireless Link (wlan0)</td><td><span id="if-wlan" class="label label-success">Online</span></td></tr>
-                                <tr><td>Packet Loss (Ping)</td><td><span id="if-loss" class="label label-success">0.0%</span></td></tr>
+                                <tr><td>Wired Link (eth0)</td><td><span id="if-eth" class="label label-default">Pending</span></td></tr>
+                                <tr><td>Wireless Link (wlan0)</td><td><span id="if-wlan" class="label label-default">Pending</span></td></tr>
+                                <tr><td>Packet Loss (Ping)</td><td><span id="if-loss" class="label label-default">--%</span></td></tr>
                             </table>
                         </div>
                     </div>
@@ -319,7 +332,13 @@ mg.include("scripts/lua/header.lp","r")
             }
             const headerLabel = document.getElementById('header-status-label');
             if (headerLabel) {
-                headerLabel.className = activeStatus === 'Healthy' ? 'label label-success' : 'label label-danger';
+                if (activeStatus === 'Healthy') {
+                    headerLabel.className = 'label label-success';
+                } else if (activeStatus === 'Degraded' || activeStatus === 'Partial Outage' || activeStatus === 'DNS Issues') {
+                    headerLabel.className = 'label label-warning';
+                } else {
+                    headerLabel.className = 'label label-danger';
+                }
                 headerLabel.textContent = '● STATUS: ' + activeStatus;
             }
 
@@ -328,6 +347,36 @@ mg.include("scripts/lua/header.lp","r")
                 if (data.interfaces.eth0 && data.interfaces.eth0.exists) activeIface = data.interfaces.eth0;
                 else if (data.interfaces.wlan0 && data.interfaces.wlan0.exists) activeIface = data.interfaces.wlan0;
                 
+                const clientDesc = document.getElementById('node-client-desc');
+                const clientNode = document.getElementById('node-client');
+                if (clientDesc && clientNode) {
+                    const eth = data.interfaces.eth0;
+                    const wlan = data.interfaces.wlan0;
+                    let parts = [];
+                    let anyOnline = false;
+                    let allOnline = true;
+                    if (eth && eth.exists) {
+                        const isOnline = (eth.connectivity === 'OK');
+                        parts.push('eth0: ' + (isOnline ? 'Online' : 'Down'));
+                        if (isOnline) anyOnline = true;
+                        else allOnline = false;
+                    }
+                    if (wlan && wlan.exists) {
+                        const isOnline = (wlan.connectivity === 'OK');
+                        parts.push('wlan0: ' + (isOnline ? 'Online' : 'Down'));
+                        if (isOnline) anyOnline = true;
+                        else allOnline = false;
+                    }
+                    clientDesc.textContent = parts.length > 0 ? parts.join(' | ') : 'Local Machine (Active)';
+                    if (allOnline) {
+                        clientNode.className = 'chain-node node-ok';
+                    } else if (anyOnline) {
+                        clientNode.className = 'chain-node node-warning';
+                    } else {
+                        clientNode.className = 'chain-node node-fail';
+                    }
+                }
+
                 updateInterfaceRow('if-eth', data.interfaces.eth0);
                 updateInterfaceRow('if-wlan', data.interfaces.wlan0);
                 
@@ -336,19 +385,36 @@ mg.include("scripts/lua/header.lp","r")
                     const lossEl = document.getElementById('if-loss');
                     if (lossEl) {
                         lossEl.textContent = lossVal.toFixed(1) + '%';
-                        lossEl.className = 'label ' + (lossVal > 0 ? 'label-danger' : 'label-success');
+                        if (lossVal === 0.0) {
+                            lossEl.className = 'label label-success';
+                        } else if (lossVal < 50.0) {
+                            lossEl.className = 'label label-warning';
+                        } else {
+                            lossEl.className = 'label label-danger';
+                        }
                     }
                 }
             }
 
-            if (activeIface && activeIface.connectivity === 'OK') {
+            // Always update the DNS chain nodes and latencies even during outages
+            if (activeIface) {
+                const isConnOk = (activeIface.connectivity === 'OK');
+                const upstreamIp = (activeIface && activeIface.upstream_ip) ? activeIface.upstream_ip : '1.1.1.3';
+                
                 updateNodeState('node-pihole', 'node-pihole-desc', activeIface.pihole, '127.0.0.1:53');
                 updateNodeState('node-dnscrypt', 'node-dnscrypt-desc', activeIface.dnscrypt, '127.0.0.1:5053');
-                updateNodeState('node-cloudflare', 'node-cloudflare-desc', activeIface.cloudflare, '1.1.1.1:53');
                 
+                // Cloudflare upstream fails if either cloudflare check failed OR internet ping is DOWN
+                const cfOk = (activeIface.cloudflare && isConnOk);
+                updateNodeState('node-cloudflare', 'node-cloudflare-desc', cfOk, upstreamIp + ':53');
+                
+                updateArrowState('arrow-1', activeIface.pihole);
+                updateArrowState('arrow-2', activeIface.dnscrypt);
+                updateArrowState('arrow-3', cfOk);
+
                 updateLatencyText('lat-pi', activeIface.latency_pihole);
                 updateLatencyText('lat-dns', activeIface.latency_dnscrypt);
-                updateLatencyText('lat-cf', activeIface.latency_cloudflare);
+                updateLatencyText('lat-cf', isConnOk ? activeIface.latency_cloudflare : -1);
             }
 
             if (data.history) renderHistoricalGrid(data.history);
@@ -375,6 +441,7 @@ mg.include("scripts/lua/header.lp","r")
             if (!el) return;
             if (!iface || !iface.exists) { el.textContent = 'Inactive'; el.className = 'label label-default'; }
             else if (iface.connectivity === 'DOWN') { el.textContent = 'Offline'; el.className = 'label label-danger'; }
+            else if (iface.dns_ok === false) { el.textContent = 'DNS Issue'; el.className = 'label label-warning'; }
             else { el.textContent = 'Online'; el.className = 'label label-success'; }
         }
 
@@ -382,8 +449,14 @@ mg.include("scripts/lua/header.lp","r")
             const nodeEl = document.getElementById(nodeId);
             const descEl = document.getElementById(descId);
             if (!nodeEl || !descEl) return;
-            nodeEl.className = isOk ? 'chain-node' : 'chain-node node-fail';
+            nodeEl.className = isOk ? 'chain-node node-ok' : 'chain-node node-fail';
             descEl.textContent = portLabel + (isOk ? ' (OK)' : ' (FAIL)');
+        }
+
+        function updateArrowState(arrowId, isOk) {
+            const arrowEl = document.getElementById(arrowId);
+            if (!arrowEl) return;
+            arrowEl.className = isOk ? 'connector-arrow arrow-ok' : 'connector-arrow arrow-fail';
         }
 
         function updateLatencyText(elId, val) {
@@ -391,6 +464,10 @@ mg.include("scripts/lua/header.lp","r")
             if (!el) return;
             if (val === undefined || val === -1 || val === null) {
                 el.textContent = 'TIMEOUT'; el.className = 'label label-danger';
+            } else if (val > 150) {
+                el.textContent = val + 'ms'; el.className = 'label label-danger';
+            } else if (val > 60) {
+                el.textContent = val + 'ms'; el.className = 'label label-warning';
             } else {
                 el.textContent = val + 'ms'; el.className = 'label label-success';
             }
