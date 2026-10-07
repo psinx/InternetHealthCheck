@@ -42,13 +42,28 @@ Lightweight telemetry monitor for internet connectivity and DNS chain health on 
 
 ---
 
-## Prerequisites
+## Architecture & Prerequisites
+
+### Monitored DNS Stack
+The monitor validates a 3-hop DNS resolution chain and WAN reachability. It expects:
+* **Pi-hole (Hop 1)**: Listening on port 53 (defaults to `127.0.0.1` locally, or remote via `--pihole-host <IP>`).
+* **dnscrypt-proxy (Hop 2, Optional)**: Listening on port 5053 (skip with `--skip-dnscrypt` for client machines).
+* **Upstream DNS (Hop 3)**: Direct resolution via Cloudflare (`1.1.1.1` / `1.1.1.3`) or custom upstream via `--upstream-dns`.
+
+> [!NOTE]
+> To monitor a non-Pi-hole resolver (e.g., your router `192.168.1.1` or Unbound), pass `--pihole-host <IP> --skip-dnscrypt`. Hop 1 will query that resolver.
+
+### System CLI Dependencies
 
 * **Linux (Raspberry Pi OS / Debian / Ubuntu)**:
+  Minimal server distributions and Raspberry Pi OS **Lite** do not include `dig` or `curl` out-of-the-box. Install the required utilities:
   ```bash
   sudo apt-get install -y bash curl dnsutils iproute2 iputils-ping python3
   ```
-* **macOS**: Built-in system tools (`ping`, `dig`, `ifconfig`, `scutil`, `python3`) are supported out-of-the-box.
+  *(Note: `dnsutils` provides `dig` for DNS querying, `iproute2` provides `ip` for link inspection, and `iputils-ping` provides `ping`).*
+
+* **macOS**:
+  All networking utilities (`dig`, `ping`, `ifconfig`, `scutil`, `python3`) are built into macOS out-of-the-box. No package installation is needed.
 
 ---
 
