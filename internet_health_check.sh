@@ -25,9 +25,9 @@ LOG_TO_FILE=false
 REDUCE_DISK_WEAR=false
 HTML_FILE=""
 INTERFACE_OVERRIDE=""
-UPSTREAM_DNS=""
+UPSTREAM_HOST=""
 OUTPUT_FORMAT=""
-PIHOLE_HOST="${PIHOLE_HOST:-}"
+RESOLVER_HOST="${RESOLVER_HOST:-}"
 DNSCRYPT_HOST="${DNSCRYPT_HOST:-}"
 SKIP_DNSCRYPT="${SKIP_DNSCRYPT:-false}"
 TAG="[INTERNET-HEALTH-CHECK]"
@@ -141,7 +141,7 @@ main() {
                 shift 2
                 ;;
             --resolver)
-                PIHOLE_HOST="$2"
+                RESOLVER_HOST="$2"
                 shift 2
                 ;;
             --dnscrypt-host)
@@ -154,7 +154,7 @@ main() {
                 shift
                 ;;
             --upstream-host)
-                UPSTREAM_DNS="$2"
+                UPSTREAM_HOST="$2"
                 shift 2
                 ;;
             -h|--help)
@@ -183,29 +183,29 @@ main() {
     fi
 
     # Resolve target DNS hosts (defaults to 127.0.0.1 on Linux, auto-detects LAN resolver on macOS)
-    if [[ -z "$PIHOLE_HOST" ]]; then
+    if [[ -z "$RESOLVER_HOST" ]]; then
         if [[ "$OSTYPE" == "darwin"* ]]; then
             if command -v nc >/dev/null 2>&1 && nc -z -w1 127.0.0.1 53 >/dev/null 2>&1; then
-                PIHOLE_HOST="127.0.0.1"
+                RESOLVER_HOST="127.0.0.1"
             else
                 local sys_dns=""
                 if command -v scutil >/dev/null 2>&1; then
                     sys_dns=$(scutil --dns 2>/dev/null | grep 'nameserver\[0\]' | head -n1 | awk '{print $3}')
                 fi
                 [[ -z "$sys_dns" && -f "/etc/resolv.conf" ]] && sys_dns=$(grep -E '^nameserver' /etc/resolv.conf 2>/dev/null | head -n1 | awk '{print $2}')
-                PIHOLE_HOST="${sys_dns:-127.0.0.1}"
+                RESOLVER_HOST="${sys_dns:-127.0.0.1}"
             fi
         else
-            PIHOLE_HOST="127.0.0.1"
+            RESOLVER_HOST="127.0.0.1"
         fi
     fi
-    export PIHOLE_HOST
+    export RESOLVER_HOST
 
     DNSCRYPT_HOST="${DNSCRYPT_HOST:-127.0.0.1}"
     export DNSCRYPT_HOST
 
     # In Client mode on macOS, if Pi-hole is remote and dnscrypt was not specified, auto-skip dnscrypt
-    if [[ "$OSTYPE" == "darwin"* && "$PIHOLE_HOST" != "127.0.0.1" && "${DNSCRYPT_HOST_SPECIFIED:-false}" != "true" ]]; then
+    if [[ "$OSTYPE" == "darwin"* && "$RESOLVER_HOST" != "127.0.0.1" && "${DNSCRYPT_HOST_SPECIFIED:-false}" != "true" ]]; then
         SKIP_DNSCRYPT=true
     fi
     export SKIP_DNSCRYPT
@@ -242,7 +242,7 @@ main() {
 
     # Detect upstream resolver IP (e.g. 1.1.1.3 for cloudflare-family)
     local detected_upstream
-    detected_upstream=$(detect_upstream_dns "$UPSTREAM_DNS")
+    detected_upstream=$(detect_upstream_dns "$UPSTREAM_HOST")
 
     # Print pretty header if pretty output format selected
     if [[ "$OUTPUT_FORMAT" == "pretty" ]]; then

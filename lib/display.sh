@@ -56,7 +56,7 @@ print_pretty_interface() {
 
     # 4. DNS Chain Resolution
     echo -e "  \033[1m4. DNS Chain Resolution:\033[0m"
-    local pi_host="${PIHOLE_HOST:-127.0.0.1}"
+    local pi_host="${RESOLVER_HOST:-127.0.0.1}"
     local dc_host="${DNSCRYPT_HOST:-127.0.0.1}"
 
     if [[ "$pi_ok" == "true" ]]; then
