@@ -80,7 +80,10 @@ mg.include("scripts/lua/header.lp","r")
             .connector-arrow { color: #4b646f; }
             .connector-arrow.arrow-ok { color: #00a65a; }
             .connector-arrow.arrow-fail { color: #dd4b39; }
+            .box.box-default { border-top-color: #4b646f; }
         }
+
+        .box.box-default { border-top-color: #d2d6de; }
 
         /* Mobile: uniform 2x2 grid */
         @media (max-width: 767px) {
@@ -167,7 +170,7 @@ mg.include("scripts/lua/header.lp","r")
 
         <section class="content">
             <!-- Live DNS Chain Box -->
-            <div class="box box-success">
+            <div class="box box-default">
                 <div class="box-header with-border">
                     <h3 class="box-title"><i class="fas fa-network-wired"></i> Live DNS Chain Diagnostics</h3>
                     <div class="box-tools pull-right">
@@ -202,7 +205,7 @@ mg.include("scripts/lua/header.lp","r")
             <!-- Stat Boxes Row (Row 2: Current Status) -->
             <div class="row">
                 <div class="col-md-6">
-                    <div class="box box-info">
+                    <div class="box box-default">
                         <div class="box-header with-border">
                             <h3 class="box-title"><i class="fas fa-tachometer-alt"></i> Hop Latency Benchmark</h3>
                         </div>
@@ -216,7 +219,7 @@ mg.include("scripts/lua/header.lp","r")
                     </div>
                 </div>
                 <div class="col-md-6">
-                    <div class="box box-info">
+                    <div class="box box-default">
                         <div class="box-header with-border">
                             <h3 class="box-title"><i class="fas fa-plug"></i> Network Interfaces</h3>
                         </div>
@@ -232,7 +235,7 @@ mg.include("scripts/lua/header.lp","r")
             </div>
 
             <!-- 72h Uptime Grid Box (Row 3: Historical) -->
-            <div class="box box-primary">
+            <div class="box box-default">
                 <div class="box-header with-border">
                     <h3 class="box-title"><i class="fas fa-history"></i> Historical Uptime (Last 72 Hours)</h3>
                     <div class="box-tools pull-right">

@@ -140,6 +140,10 @@
         .box.box-primary { border-top-color: #3c8dbc; }
         .box.box-info { border-top-color: #00c0ef; }
         .box.box-default { border-top-color: #d2d6de; }
+
+        @media (prefers-color-scheme: dark) {
+            .box.box-default { border-top-color: #4b646f; }
+        }
         .box-header { padding: 12px 15px; border-bottom: 1px solid rgba(0,0,0,0.1); }
         .box-title { font-size: 1.1em; font-weight: 600; margin: 0; }
         .table-bordered { border: 1px solid rgba(0,0,0,0.1); }
@@ -196,7 +200,7 @@
 
         <section class="content">
             <!-- Live DNS Chain Box -->
-            <div class="box box-success">
+            <div class="box box-default">
                 <div class="box-header with-border">
                     <h3 class="box-title"><i class="fas fa-network-wired"></i> Live DNS Chain Diagnostics</h3>
                     <div class="box-tools pull-right">
@@ -231,7 +235,7 @@
             <!-- Stat Boxes Row (Row 2: Current Status) -->
             <div class="row">
                 <div class="col-md-6">
-                    <div class="box box-info">
+                    <div class="box box-default">
                         <div class="box-header with-border">
                             <h3 class="box-title"><i class="fas fa-tachometer-alt"></i> Hop Latency Benchmark</h3>
                         </div>
@@ -245,7 +249,7 @@
                     </div>
                 </div>
                 <div class="col-md-6">
-                    <div class="box box-info">
+                    <div class="box box-default">
                         <div class="box-header with-border">
                             <h3 class="box-title"><i class="fas fa-plug"></i> Network Interfaces</h3>
                         </div>
@@ -261,7 +265,7 @@
             </div>
 
             <!-- 72h Uptime Grid Box in Chronological Order (Row 3: Historical) -->
-            <div class="box box-primary">
+            <div class="box box-default">
                 <div class="box-header with-border">
                     <h3 class="box-title"><i class="fas fa-history"></i> Historical Uptime (Last 72 Hours)</h3>
                     <div class="box-tools pull-right">
@@ -323,6 +327,6 @@
 <script src="/admin/vendor/jquery/jquery.min.js"></script>
 <!-- AdminLTE layout engine (handles sidebar/content-wrapper height) -->
 <script src="/admin/vendor/adminLTE/adminlte.min.js"></script>
-<script src="/app.js?v=2.5"></script>
+<script src="/app.js?v=2.6"></script>
 </body>
 </html>
