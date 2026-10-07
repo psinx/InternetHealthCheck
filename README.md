@@ -34,7 +34,7 @@ Lightweight telemetry monitor for internet connectivity and DNS chain health on 
 ./internet_health_check.sh --format log
 
 # Client check against remote Pi-hole (bypasses dnscrypt hop)
-./internet_health_check.sh --pihole-host 192.168.1.2 --skip-dnscrypt
+./internet_health_check.sh --resolver 192.168.1.2 --skip-dnscrypt
 
 # Run automated test suite
 ./tests/test_internet_health_check.sh
@@ -50,12 +50,12 @@ The health check validates an end-to-end 3-hop resolution chain alongside WAN re
 
 | Hop | Service | Default Endpoint | Role & Customization |
 | :---: | :--- | :--- | :--- |
-| **1** | **Pi-hole** *(Local Resolver)* | `127.0.0.1:53` | Primary DNS & ad-blocking. Override with `--pihole-host <IP>`. |
+| **1** | **Pi-hole** *(Local Resolver)* | `127.0.0.1:53` | Primary DNS & ad-blocking. Override with `--resolver <IP>`. |
 | **2** | **dnscrypt-proxy** *(Optional)* | `127.0.0.1:5053` | Encrypted DoH/DoT transport. Bypass with `--skip-dnscrypt`. |
-| **3** | **Upstream WAN** | `1.1.1.1:53` / `1.1.1.3:53` | Direct upstream resolution. Customize via `--upstream-dns <IP>`. |
+| **3** | **Upstream WAN** | `1.1.1.1:53` / `1.1.1.3:53` | Direct upstream resolution. Customize via `--upstream-host <HOST>`. |
 
 > [!NOTE]
-> **Non-Pi-hole Resolvers**: To test a generic setup (e.g., home router `192.168.1.1` or Unbound), pass `--pihole-host <IP> --skip-dnscrypt`. Hop 1 will query that resolver directly.
+> **Non-Pi-hole Resolvers**: To test a generic setup (e.g., home router `192.168.1.1` or Unbound), pass `--resolver <IP> --skip-dnscrypt`. Hop 1 will query that resolver directly.
 
 ### System CLI Dependencies
 
@@ -91,7 +91,7 @@ The health check validates an end-to-end 3-hop resolution chain alongside WAN re
 3. **Configure cron automation:**
    Edit crontab (`crontab -e`) to poll every 5 minutes (replace `/path/to` with your cloned repository path):
    ```bash
-   */5 * * * * /path/to/InternetHealthCheck/internet_health_check.sh --reduce-disk-wear --html-file /var/www/html/index.html --log-file /path/to/InternetHealthCheck/logs/internet_health.log >/dev/null 2>&1
+   */5 * * * * /path/to/InternetHealthCheck/internet_health_check.sh --cron --dashboard /var/www/html/index.html --log-file /path/to/InternetHealthCheck/logs/internet_health.log >/dev/null 2>&1
    ```
 
 ### Client Workstation (macOS / Linux)
@@ -100,7 +100,7 @@ Run health checks against a remote Pi-hole over LAN:
 ```bash
 git clone https://github.com/psinx/InternetHealthCheck.git InternetHealthCheck
 cd InternetHealthCheck
-./internet_health_check.sh --pihole-host 192.168.1.2 --skip-dnscrypt
+./internet_health_check.sh --resolver 192.168.1.2 --skip-dnscrypt
 ```
 
 ---
@@ -109,14 +109,15 @@ cd InternetHealthCheck
 
 | Option | Argument | Description |
 |---|---|---|
+| `--cron` | None | Unattended preset: implies `--reduce-disk-wear` and `--format log` |
 | `--reduce-disk-wear` | None | Buffer states in RAM (`/dev/shm`); write to disk only on state transitions or outages |
-| `--html-file` | `FILE` | Generate `status.json` and deploy web assets to target directory |
+| `--dashboard` | `FILE` | Deploy web dashboard (`index.html`, `app.js`) at `FILE` and write `status.json` alongside it |
 | `--log-file` | `FILE` | Persistent disk log path (default: stdout or `logs/internet_health.log`) |
 | `--interfaces` | `IFACES` | Comma-separated list of interfaces to monitor (default: auto-detected) |
-| `--pihole-host` | `HOST` | Pi-hole host/IP to query (default: `127.0.0.1` on Linux, LAN resolver on macOS) |
+| `--resolver` | `HOST` | Primary resolver (Pi-hole, router, Unbound) host/IP to query (default: `127.0.0.1` on Linux, LAN resolver on macOS) |
 | `--dnscrypt-host` | `HOST` | dnscrypt-proxy host/IP to query (default: `127.0.0.1`) |
 | `--skip-dnscrypt` | None | Skip dnscrypt-proxy hop (recommended for client checks) |
-| `--upstream-dns` | `IP` | Upstream DNS server to query (default: auto-detected or `1.1.1.3`) |
+| `--upstream-host` | `HOST` | Upstream DNS server to query (default: auto-detected or `1.1.1.3`) |
 | `--format` | `pretty\|log` | Output format: `pretty` (visual checklist) or `log` (timestamped syslog) |
 | `-h`, `--help` | None | Display help message |
 

@@ -14,3 +14,5 @@ status.json
 scratch/
 .grok/
 .opencode/
+.github/hooks/
+.github/copilot-instructions.md

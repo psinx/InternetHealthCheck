@@ -65,7 +65,7 @@ HOME="$TEST_HOME"
 export HOME
 source "$SCRIPT_PATH"
 export RAM_STATE_FILE="$TEST_RAM_FILE"
-main --log-file "$TEST_LOG_FILE" --html-file "$TEST_HOME/status.json" --format log
+main --log-file "$TEST_LOG_FILE" --dashboard "$TEST_HOME/status.json" --format log
 TESTEOF
     else
         cat > /tmp/run_test.sh << 'TESTEOF'
@@ -542,7 +542,7 @@ TESTEOF
 }
 
 test_18_custom_pihole_and_skip_dnscrypt() {
-    echo "TEST 18: --pihole-host and --skip-dnscrypt flags"
+    echo "TEST 18: --resolver and --skip-dnscrypt flags"
     setup_test_env
 
     cat > /tmp/test_custom_dns.sh << 'TESTEOF'
@@ -558,7 +558,7 @@ logger() { return 0; }
 export -f ip ping dig logger
 rm -f /tmp/dig_calls.log
 source "$SCRIPT_PATH"
-main --interfaces "eth0" --pihole-host "192.168.1.2" --skip-dnscrypt --format pretty
+main --interfaces "eth0" --resolver "192.168.1.2" --skip-dnscrypt --format pretty
 TESTEOF
     chmod +x /tmp/test_custom_dns.sh
 
@@ -661,7 +661,7 @@ HOME="$TEST_HOME"
 export HOME
 export RAM_STATE_FILE="$TEST_RAM_FILE"
 source "$SCRIPT_PATH"
-main --log-file "$TEST_LOG_FILE" --html-file "$target_json" --format log
+main --log-file "$TEST_LOG_FILE" --dashboard "$target_json" --format log
 TESTEOF
     chmod +x /tmp/test_json.sh
     SCRIPT_PATH="$SCRIPT_PATH" TEST_HOME="$TEST_HOME" TEST_RAM_FILE="$TEST_RAM_FILE" TEST_LOG_FILE="$TEST_LOG_FILE" bash /tmp/test_json.sh >/dev/null 2>&1
@@ -698,7 +698,7 @@ HOME="$TEST_HOME"
 export HOME
 export RAM_STATE_FILE="$TEST_RAM_FILE"
 source "$SCRIPT_PATH"
-main --log-file "$TEST_LOG_FILE" --html-file "$target_html" --reduce-disk-wear --format log
+main --log-file "$TEST_LOG_FILE" --dashboard "$target_html" --reduce-disk-wear --format log
 TESTEOF
     chmod +x /tmp/test_disk_wear.sh
     SCRIPT_PATH="$SCRIPT_PATH" TEST_HOME="$TEST_HOME" TEST_RAM_FILE="$TEST_RAM_FILE" TEST_LOG_FILE="$TEST_LOG_FILE" bash /tmp/test_disk_wear.sh >/dev/null 2>&1
@@ -730,6 +730,34 @@ TESTEOF
     fi
 
     rm -f /tmp/test_disk_wear.sh
+    cleanup_test_env
+}
+
+test_23_cli_flags() {
+    echo "TEST 23: --cron preset and removed legacy flags"
+    setup_test_env
+
+    local out rc
+    rc=0; out=$(bash "$SCRIPT_PATH" --html-file /tmp/x.html 2>&1) || rc=$?
+    if [[ $rc -ne 0 ]] && echo "$out" | grep -q "Unknown option: --html-file"; then
+        assert_pass "Legacy --html-file is rejected"
+    else
+        assert_fail "Legacy --html-file was not rejected: $out"
+    fi
+
+    rc=0; out=$(bash "$SCRIPT_PATH" --pihole-host 1.2.3.4 2>&1) || rc=$?
+    if [[ $rc -ne 0 ]] && echo "$out" | grep -q "Unknown option: --pihole-host"; then
+        assert_pass "Legacy --pihole-host is rejected"
+    else
+        assert_fail "Legacy --pihole-host was not rejected: $out"
+    fi
+
+    out=$(bash "$SCRIPT_PATH" --help 2>&1)
+    if echo "$out" | grep -q -- "--cron" && echo "$out" | grep -q -- "--dashboard" && echo "$out" | grep -q -- "--resolver" && echo "$out" | grep -q -- "--upstream-host"; then
+        assert_pass "--help lists canonical flags"
+    else
+        assert_fail "--help missing canonical flags"
+    fi
     cleanup_test_env
 }
 
@@ -859,6 +887,8 @@ main() {
     test_21_status_json_schema
     echo ""
     test_22_reduce_disk_wear_ram_json
+    echo ""
+    test_23_cli_flags
     
     echo ""
     echo "=========================================="

@@ -55,16 +55,16 @@ Options:
                         only write state changes/outages to disk log.
   --format FORMAT       Output format: 'pretty' (visual checklist) or 'log' (syslog style).
                         Defaults to 'pretty' in interactive terminals, 'log' when piped/cron.
-  --pretty              Shortcut for --format pretty
-  --log-format          Shortcut for --format log
-  --html-file FILE      Generate a beautiful Pi-hole v6 style HTML status dashboard at FILE.
+  --cron                Unattended preset: implies --reduce-disk-wear and --format log.
+  --dashboard FILE      Deploy the Pi-hole v6 style web dashboard (index.html, app.js) at FILE
+                        and write status.json alongside it.
   --interfaces IFACES   Comma-separated list of interfaces to monitor (e.g. eth0,wlan0).
                         Defaults to auto-detecting all active interfaces.
-  --pihole-host HOST    Pi-hole server IP/hostname to test (defaults to 127.0.0.1 on server,
-                        or auto-discovered system nameserver on macOS clients).
+  --resolver HOST       Primary DNS resolver (Pi-hole, router, Unbound...) to test (defaults to
+                        127.0.0.1 on server, or auto-discovered system nameserver on macOS clients).
   --dnscrypt-host HOST  dnscrypt-proxy host to test (defaults to 127.0.0.1).
   --skip-dnscrypt       Skip Hop 2 dnscrypt check (useful for client machines on LAN).
-  --upstream-dns IP     Specify upstream DNS server IP to query (e.g. 1.1.1.3).
+  --upstream-host HOST  Specify upstream DNS server IP/hostname to query (e.g. 1.1.1.3).
                         Defaults to auto-detecting server_names from /etc/dnscrypt-proxy/dnscrypt-proxy.toml.
   -h, --help            Show this help message
 
@@ -76,10 +76,10 @@ Examples:
   ./internet_health_check.sh --format log
 
   # Run on a Mac client pointing to Pi-hole on LAN
-  ./internet_health_check.sh --pihole-host 192.168.1.2 --skip-dnscrypt
+  ./internet_health_check.sh --resolver 192.168.1.2 --skip-dnscrypt
 
   # Run daemon in cron, writing to RAM and logging transition alerts to disk
-  ./internet_health_check.sh --log-file logs/health.log --reduce-disk-wear --html-file /var/www/html/index.html
+  ./internet_health_check.sh --cron --log-file logs/health.log --dashboard /var/www/html/index.html
 EOF
 }
 
@@ -127,15 +127,12 @@ main() {
                 OUTPUT_FORMAT="$2"
                 shift 2
                 ;;
-            --pretty)
-                OUTPUT_FORMAT="pretty"
-                shift
-                ;;
-            --log-format)
+            --cron)
+                REDUCE_DISK_WEAR=true
                 OUTPUT_FORMAT="log"
                 shift
                 ;;
-            --html-file)
+            --dashboard)
                 HTML_FILE="$2"
                 shift 2
                 ;;
@@ -143,7 +140,7 @@ main() {
                 INTERFACE_OVERRIDE="$2"
                 shift 2
                 ;;
-            --pihole-host)
+            --resolver)
                 PIHOLE_HOST="$2"
                 shift 2
                 ;;
@@ -156,7 +153,7 @@ main() {
                 SKIP_DNSCRYPT=true
                 shift
                 ;;
-            --upstream-dns)
+            --upstream-host)
                 UPSTREAM_DNS="$2"
                 shift 2
                 ;;
@@ -341,7 +338,7 @@ EOF
         fi
     done
 
-    # Generate status.json & HTML dashboard if --html-file specified
+    # Generate status.json & HTML dashboard if --dashboard specified
     if [[ -n "$HTML_FILE" ]]; then
         generate_status_json "$json_ifaces" "$HTML_FILE"
     fi
