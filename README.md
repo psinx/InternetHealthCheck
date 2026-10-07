@@ -1,6 +1,6 @@
 # Internet Health Check
 
-Lightweight Bash and telemetry monitor for internet connectivity and DNS chain health on Linux, Raspberry Pi OS, and macOS. Features a web dashboard styled to match Pi-hole v6, zero-disk-wear RAM state tracking, 72-hour historical SLA grid, and real-time CLI diagnostics.
+Lightweight telemetry monitor for internet connectivity and DNS chain health on Linux, Raspberry Pi OS, and macOS. Features a web dashboard styled to match Pi-hole v6, zero-disk-wear RAM state tracking, 72-hour historical SLA grid, and real-time CLI diagnostics.
 
 [![Version](https://img.shields.io/badge/version-3.1.0-blue.svg)](https://github.com/psinx/InternetHealthCheck/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
