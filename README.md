@@ -45,13 +45,17 @@ Lightweight telemetry monitor for internet connectivity and DNS chain health on 
 ## Architecture & Prerequisites
 
 ### Monitored DNS Stack
-The monitor validates a 3-hop DNS resolution chain and WAN reachability. It expects:
-* **Pi-hole (Hop 1)**: Listening on port 53 (defaults to `127.0.0.1` locally, or remote via `--pihole-host <IP>`).
-* **dnscrypt-proxy (Hop 2, Optional)**: Listening on port 5053 (skip with `--skip-dnscrypt` for client machines).
-* **Upstream DNS (Hop 3)**: Direct resolution via Cloudflare (`1.1.1.1` / `1.1.1.3`) or custom upstream via `--upstream-dns`.
+
+The health check validates an end-to-end 3-hop resolution chain alongside WAN reachability:
+
+| Hop | Service | Default Endpoint | Role & Customization |
+| :---: | :--- | :--- | :--- |
+| **Hop 1** | **Pi-hole** *(Local Resolver)* | `127.0.0.1:53` | Primary DNS & ad-blocking. Override with `--pihole-host <IP>`. |
+| **Hop 2** | **dnscrypt-proxy** *(Optional)* | `127.0.0.1:5053` | Encrypted DoH/DoT transport. Bypass with `--skip-dnscrypt`. |
+| **Hop 3** | **Upstream WAN** | `1.1.1.1:53` / `1.1.1.3:53` | Direct upstream resolution. Customize via `--upstream-dns <IP>`. |
 
 > [!NOTE]
-> To monitor a non-Pi-hole resolver (e.g., your router `192.168.1.1` or Unbound), pass `--pihole-host <IP> --skip-dnscrypt`. Hop 1 will query that resolver.
+> **Non-Pi-hole Resolvers**: To test a generic setup (e.g., home router `192.168.1.1` or Unbound), pass `--pihole-host <IP> --skip-dnscrypt`. Hop 1 will query that resolver directly.
 
 ### System CLI Dependencies
 
