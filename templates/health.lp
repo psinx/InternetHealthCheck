@@ -27,21 +27,6 @@ mg.include("scripts/lua/header.lp","r")
         .hour-cell.hour-danger { background-color: #dd4b39; opacity: 1; }
         .hour-cell.hour-inactive { background-color: #d2d6de; opacity: 0.7; }
 
-        @media (prefers-color-scheme: dark) {
-            .hour-cell { background-color: #4b646f; opacity: 0.45; }
-            .hour-cell.hour-ok { background-color: #00a65a; opacity: 1; }
-            .hour-cell.hour-warning { background-color: #f39c12; opacity: 1; }
-            .hour-cell.hour-danger { background-color: #dd4b39; opacity: 1; }
-            .hour-cell.hour-inactive { background-color: #4b646f; opacity: 0.45; }
-            .chain-node { border-color: #4b646f; }
-            .chain-node.node-ok { border-color: #00a65a; }
-            .chain-node.node-warning { border-color: #f39c12; }
-            .chain-node.node-fail { border-color: #dd4b39; }
-            .connector-arrow { color: #4b646f; }
-            .connector-arrow.arrow-ok { color: #00a65a; }
-            .connector-arrow.arrow-fail { color: #dd4b39; }
-        }
-
         /* DNS Chain Node Styling */
         .chain-flow { 
             display: flex; 
@@ -81,6 +66,21 @@ mg.include("scripts/lua/header.lp","r")
         }
         .connector-arrow.arrow-ok { color: #00a65a; }
         .connector-arrow.arrow-fail { color: #dd4b39; }
+
+        @media (prefers-color-scheme: dark) {
+            .hour-cell { background-color: #4b646f; opacity: 0.45; }
+            .hour-cell.hour-ok { background-color: #00a65a; opacity: 1; }
+            .hour-cell.hour-warning { background-color: #f39c12; opacity: 1; }
+            .hour-cell.hour-danger { background-color: #dd4b39; opacity: 1; }
+            .hour-cell.hour-inactive { background-color: #4b646f; opacity: 0.45; }
+            .chain-node { border-color: #4b646f; }
+            .chain-node.node-ok { border-color: #00a65a; }
+            .chain-node.node-warning { border-color: #f39c12; }
+            .chain-node.node-fail { border-color: #dd4b39; }
+            .connector-arrow { color: #4b646f; }
+            .connector-arrow.arrow-ok { color: #00a65a; }
+            .connector-arrow.arrow-fail { color: #dd4b39; }
+        }
 
         /* Mobile: uniform 2x2 grid */
         @media (max-width: 767px) {

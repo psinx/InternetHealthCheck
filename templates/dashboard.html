@@ -49,21 +49,6 @@
         .hour-cell.hour-warning { background-color: #f39c12; opacity: 1; }
         .hour-cell.hour-danger { background-color: #dd4b39; opacity: 1; }
         .hour-cell.hour-inactive { background-color: #d2d6de; opacity: 0.7; }
-
-        @media (prefers-color-scheme: dark) {
-            .hour-cell { background-color: #4b646f; opacity: 0.45; }
-            .hour-cell.hour-ok { background-color: #00a65a; opacity: 1; }
-            .hour-cell.hour-warning { background-color: #f39c12; opacity: 1; }
-            .hour-cell.hour-danger { background-color: #dd4b39; opacity: 1; }
-            .hour-cell.hour-inactive { background-color: #4b646f; opacity: 0.45; }
-            .chain-node { border-color: #4b646f; }
-            .chain-node.node-ok { border-color: #00a65a; }
-            .chain-node.node-warning { border-color: #f39c12; }
-            .chain-node.node-fail { border-color: #dd4b39; }
-            .connector-arrow { color: #4b646f; }
-            .connector-arrow.arrow-ok { color: #00a65a; }
-            .connector-arrow.arrow-fail { color: #dd4b39; }
-        }
         
         /* Time Labels Header above Grid */
         .time-header-row { display: flex; margin-left: 110px; margin-bottom: 6px; gap: 3px; font-size: 11px; font-weight: bold; }
@@ -107,6 +92,21 @@
         }
         .connector-arrow.arrow-ok { color: #00a65a; }
         .connector-arrow.arrow-fail { color: #dd4b39; }
+
+        @media (prefers-color-scheme: dark) {
+            .hour-cell { background-color: #4b646f; opacity: 0.45; }
+            .hour-cell.hour-ok { background-color: #00a65a; opacity: 1; }
+            .hour-cell.hour-warning { background-color: #f39c12; opacity: 1; }
+            .hour-cell.hour-danger { background-color: #dd4b39; opacity: 1; }
+            .hour-cell.hour-inactive { background-color: #4b646f; opacity: 0.45; }
+            .chain-node { border-color: #4b646f; }
+            .chain-node.node-ok { border-color: #00a65a; }
+            .chain-node.node-warning { border-color: #f39c12; }
+            .chain-node.node-fail { border-color: #dd4b39; }
+            .connector-arrow { color: #4b646f; }
+            .connector-arrow.arrow-ok { color: #00a65a; }
+            .connector-arrow.arrow-fail { color: #dd4b39; }
+        }
         
         /* Mobile: uniform 2x2 grid */
         @media (max-width: 767px) {
@@ -323,6 +323,6 @@
 <script src="/admin/vendor/jquery/jquery.min.js"></script>
 <!-- AdminLTE layout engine (handles sidebar/content-wrapper height) -->
 <script src="/admin/vendor/adminLTE/adminlte.min.js"></script>
-<script src="/app.js?v=2.3"></script>
+<script src="/app.js?v=2.4"></script>
 </body>
 </html>
