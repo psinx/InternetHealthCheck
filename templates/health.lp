@@ -163,7 +163,7 @@ mg.include("scripts/lua/header.lp","r")
     <div class="content-wrapper" style="min-height: 900px; padding: 15px;">
         <section class="content-header" style="padding-bottom: 15px;">
             <h1>
-                Internet Health Diagnostics
+                Internet Health Check
                 <small style="color: #aaa;">Real-time DNS Chain & SLA Uptime</small>
             </h1>
         </section>
@@ -271,6 +271,13 @@ mg.include("scripts/lua/header.lp","r")
             </div>
         </section>
     </div>
+
+    <!-- Main Footer -->
+    <footer class="main-footer">
+        <div class="text-center">
+            <strong><a href="https://github.com/psinx/InternetHealthCheck" target="_blank" rel="noopener noreferrer"><i class="fab fa-github"></i> Internet Health Check</a></strong> — Pi-hole v6 System Integration
+        </div>
+    </footer>
 </div>
 
 <script>
