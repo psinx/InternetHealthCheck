@@ -41,8 +41,8 @@ Lightweight Bash and telemetry monitor for internet connectivity and DNS chain h
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/psinx/InternetHealthCheck.git ~/InternetHealthCheck
-   cd ~/InternetHealthCheck
+   git clone https://github.com/psinx/InternetHealthCheck.git
+   cd InternetHealthCheck
    chmod +x internet_health_check.sh tests/test_internet_health_check.sh
    ```
 
@@ -53,9 +53,9 @@ Lightweight Bash and telemetry monitor for internet connectivity and DNS chain h
    ```
 
 3. **Configure cron automation:**
-   Edit the crontab (`crontab -e`) to poll every 5 minutes:
+   Edit crontab (`crontab -e`) to poll every 5 minutes (replace `/path/to` with your cloned repository path):
    ```bash
-   */5 * * * * ~/InternetHealthCheck/internet_health_check.sh --reduce-disk-wear --html-file /var/www/html/index.html --log-file ~/InternetHealthCheck/logs/internet_health.log >/dev/null 2>&1
+   */5 * * * * /path/to/InternetHealthCheck/internet_health_check.sh --reduce-disk-wear --html-file /var/www/html/index.html --log-file /path/to/InternetHealthCheck/logs/internet_health.log >/dev/null 2>&1
    ```
 
    * **Disk wear protection (`--reduce-disk-wear`)**: High-frequency states are buffered in RAM (`/dev/shm/internet_health_history.txt`). Redundant `OK` entries are suppressed, writing to disk only during outages, state transitions, or 24-hour heartbeats to maximize SD card lifespan.

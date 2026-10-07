@@ -474,7 +474,7 @@ if script_dir:
     default_log = os.path.join(script_dir, "logs", "internet_health.log")
     if os.path.exists(default_log) and default_log not in candidate_logs:
         candidate_logs.append(default_log)
-for path in ["/home/prateek/InternetHealthCheck/logs/internet_health.log", "/var/log/internet_health.log"]:
+for path in ["/var/log/internet_health.log"]:
     if os.path.exists(path) and path not in candidate_logs:
         candidate_logs.append(path)
 
