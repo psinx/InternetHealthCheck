@@ -89,18 +89,12 @@ cd InternetHealthCheck
 
 ---
 
-## Dashboard Architecture
+## Dashboard
 
-The web dashboard is organized into four tiers matching Pi-hole v6 styling:
+![Internet Health Check Dashboard](assets/dashboard.png)
 
-* **Tier 1 — Live DNS Chain Diagnostics**: Visual chain resolution (`CLIENT` ➔ `Pi-hole` ➔ `dnscrypt-proxy` ➔ `Cloudflare`) with multiline interface status (`eth0: Online`, `wlan0: Online`).
-* **Tier 2 — Hop Latency & Interfaces**: Real-time hop latency benchmarks and per-interface packet loss metrics.
-* **Tier 3 — Historical Uptime (72 Hours)**: Chronological 3-row grid (*2 Days Ago*, *Yesterday*, *Today*) with interactive root-cause hover tooltips and SLA percentage.
-* **Tier 4 — Recent Events & Outages Log**: Timestamped table recording interface disconnects and outages.
-
-**Technical highlights:**
-* **Single-Pass Telemetry**: The monitoring script compiles `status.json` in a single run; the frontend polls asynchronously every 30 seconds with relative freshness tickers and stale alerts.
-* **Theme Support**: Automatically switches between dark and light themes following system `prefers-color-scheme`.
+* **Single-Pass Telemetry**: Compiles `status.json` in a single run; frontend polls asynchronously every 30 seconds with relative freshness tickers.
+* **Auto Theme**: Automatically switches between dark and light themes following system `prefers-color-scheme`.
 * **Clean UI**: Semantic AdminLTE status badges without unicode symbol clutter.
 
 ---
