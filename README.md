@@ -41,7 +41,7 @@ Lightweight Bash and telemetry monitor for internet connectivity and DNS chain h
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/psinx/InternetHealthCheck.git
+   git clone https://github.com/psinx/InternetHealthCheck.git InternetHealthCheck
    cd InternetHealthCheck
    chmod +x internet_health_check.sh tests/test_internet_health_check.sh
    ```
@@ -65,7 +65,7 @@ Lightweight Bash and telemetry monitor for internet connectivity and DNS chain h
 
 Run health checks against a remote Pi-hole over LAN:
 ```bash
-git clone https://github.com/psinx/InternetHealthCheck.git
+git clone https://github.com/psinx/InternetHealthCheck.git InternetHealthCheck
 cd InternetHealthCheck
 ./internet_health_check.sh --pihole-host 192.168.1.2 --skip-dnscrypt
 ```
