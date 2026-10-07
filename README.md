@@ -50,9 +50,9 @@ The health check validates an end-to-end 3-hop resolution chain alongside WAN re
 
 | Hop | Service | Default Endpoint | Role & Customization |
 | :---: | :--- | :--- | :--- |
-| **Hop 1** | **Pi-hole** *(Local Resolver)* | `127.0.0.1:53` | Primary DNS & ad-blocking. Override with `--pihole-host <IP>`. |
-| **Hop 2** | **dnscrypt-proxy** *(Optional)* | `127.0.0.1:5053` | Encrypted DoH/DoT transport. Bypass with `--skip-dnscrypt`. |
-| **Hop 3** | **Upstream WAN** | `1.1.1.1:53` / `1.1.1.3:53` | Direct upstream resolution. Customize via `--upstream-dns <IP>`. |
+| **1** | **Pi-hole** *(Local Resolver)* | `127.0.0.1:53` | Primary DNS & ad-blocking. Override with `--pihole-host <IP>`. |
+| **2** | **dnscrypt-proxy** *(Optional)* | `127.0.0.1:5053` | Encrypted DoH/DoT transport. Bypass with `--skip-dnscrypt`. |
+| **3** | **Upstream WAN** | `1.1.1.1:53` / `1.1.1.3:53` | Direct upstream resolution. Customize via `--upstream-dns <IP>`. |
 
 > [!NOTE]
 > **Non-Pi-hole Resolvers**: To test a generic setup (e.g., home router `192.168.1.1` or Unbound), pass `--pihole-host <IP> --skip-dnscrypt`. Hop 1 will query that resolver directly.
