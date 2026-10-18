@@ -91,7 +91,7 @@ The health check validates an end-to-end 3-hop resolution chain alongside WAN re
 3. **Configure cron automation:**
    Edit crontab (`crontab -e`) to poll every 5 minutes (replace `/path/to` with your cloned repository path):
    ```bash
-   */5 * * * * /path/to/InternetHealthCheck/internet_health_check.sh --reduce-disk-wear --dashboard /var/www/html/index.html --log-file /path/to/InternetHealthCheck/logs/internet_health.log >/dev/null 2>&1
+   */5 * * * * /path/to/InternetHealthCheck/internet_health_check.sh --reduce-disk-wear --dashboard /var/www/html/index.html --log-file /path/to/InternetHealthCheck/logs/internet_health.log --pihole-dns 192.168.1.2 >/dev/null 2>&1
    ```
 
 ### Client Workstation (macOS / Linux)
