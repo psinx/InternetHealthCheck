@@ -16,3 +16,6 @@ scratch/
 .opencode/
 .github/hooks/
 .github/copilot-instructions.md
+.codex/
+backups/
+*.tar.gz
