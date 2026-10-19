@@ -505,7 +505,7 @@ for c_log in candidate_logs:
                                 if "[eth0]" in line: hours_ifaces[day_label][hour_idx].add("eth0")
                                 if "[wlan0]" in line: hours_ifaces[day_label][hour_idx].add("wlan0")
 
-                            if "[eth0]" in line and ("CONNECTIVITY OUTAGE" in line or "Fail during Ping" in line):
+                            if "[eth0]" in line and ("DOWN" in line or "Fail" in line or "CONNECTIVITY OUTAGE" in line):
                                 hours_status[day_label][hour_idx] = "DANGER"
                                 if not hours_earliest[day_label][hour_idx]:
                                     hours_earliest[day_label][hour_idx] = time_str

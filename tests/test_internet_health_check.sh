@@ -761,6 +761,48 @@ test_23_cli_flags() {
     cleanup_test_env
 }
 
+test_24_disk_log_heatmap_danger_on_eth0_down() {
+    echo "TEST 24: Disk log parsing marks eth0 DOWN as DANGER in 72h heatmap"
+    setup_test_env
+
+    local target_json="$TEST_HOME/status.json"
+    local yesterday_date
+    yesterday_date=$(python3 -c "import datetime; print((datetime.datetime.now() - datetime.timedelta(days=1)).strftime('%Y-%m-%d'))")
+    echo "$yesterday_date 21:30:00 [INTERNET-HEALTH-CHECK] [wlan0] DOWN" > "$TEST_LOG_FILE"
+    echo "$yesterday_date 22:30:00 [INTERNET-HEALTH-CHECK] [eth0] DOWN" >> "$TEST_LOG_FILE"
+    echo "$yesterday_date 22:30:00 [INTERNET-HEALTH-CHECK] [wlan0] DOWN" >> "$TEST_LOG_FILE"
+
+    cat > /tmp/test_heatmap.sh << TESTEOF
+#!/bin/bash
+HOME="$TEST_HOME"
+export HOME
+export RAM_STATE_FILE="$TEST_RAM_FILE"
+source "$SCRIPT_PATH"
+main --log-file "$TEST_LOG_FILE" --dashboard "$target_json" --format log
+TESTEOF
+    chmod +x /tmp/test_heatmap.sh
+    SCRIPT_PATH="$SCRIPT_PATH" TEST_HOME="$TEST_HOME" TEST_RAM_FILE="$TEST_RAM_FILE" TEST_LOG_FILE="$TEST_LOG_FILE" bash /tmp/test_heatmap.sh >/dev/null 2>&1
+
+    if python3 -c "
+import json, sys
+with open('$target_json') as f:
+    d = json.load(f)
+yesterday = next((day for day in d['history'] if day['label'] == 'Yesterday'), None)
+assert yesterday is not None, 'Yesterday not found in history'
+h21 = yesterday['hours'][21]
+h22 = yesterday['hours'][22]
+assert h21['status'] == 'WARNING', f'Expected WARNING for wlan0 only, got {h21[\"status\"]}'
+assert h22['status'] == 'DANGER', f'Expected DANGER for eth0 DOWN, got {h22[\"status\"]}'
+"; then
+        assert_pass "eth0 DOWN parsed as DANGER and wlan0 DOWN parsed as WARNING in heatmap"
+    else
+        assert_fail "Heatmap status classification from disk log failed"
+    fi
+
+    rm -f /tmp/test_heatmap.sh
+    cleanup_test_env
+}
+
 #=============================================================================
 # Main
 #=============================================================================
@@ -889,6 +931,8 @@ main() {
     test_22_reduce_disk_wear_ram_json
     echo ""
     test_23_cli_flags
+    echo ""
+    test_24_disk_log_heatmap_danger_on_eth0_down
     
     echo ""
     echo "=========================================="
