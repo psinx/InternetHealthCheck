@@ -19,3 +19,7 @@ scratch/
 .codex/
 backups/
 *.tar.gz
+*.png
+dashboard/
+__pycache__/
+*.pyc

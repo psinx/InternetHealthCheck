@@ -2,17 +2,17 @@
 
 # internet_health_check.sh
 # Purpose:  Monitor internet connectivity and DNS chain health
-# Supports: Dynamic interface discovery, zero-disk-wear RAM logging, syslog alerting,
-#           and modern Pi-hole v6 style HTML dashboards.
+# Supports: Dynamic interface discovery, zero-disk-wear RAM logging, syslog/webhook alerting,
+#           out-of-band canary push, and modern Pi-hole v6 style HTML dashboards.
 
-# Configuration Defaults (can be customized)
 readonly PING_TARGET="1.1.1.1"
 readonly DNS_TEST_DOMAIN="cloudflare.com"
 readonly PING_TIMEOUT=5
-readonly PING_COUNT=4
+readonly PING_COUNT="${PING_COUNT:-10}"
 
 readonly PIHOLE_PORT="53"
 readonly DNSCRYPT_PORT="5053"
+export PIHOLE_PORT DNSCRYPT_PORT
 readonly DNS_TIMEOUT=3
 readonly DNS_TRIES=2
 
@@ -26,69 +26,75 @@ REDUCE_DISK_WEAR=false
 HTML_FILE=""
 INTERFACE_OVERRIDE=""
 UPSTREAM_DNS=""
+UPSTREAM_SECONDARY_DNS="${UPSTREAM_SECONDARY_DNS:-}"
 OUTPUT_FORMAT=""
 PIHOLE_DNS="${PIHOLE_DNS:-}"
 DNSCRYPT_HOST="${DNSCRYPT_HOST:-}"
 SKIP_DNSCRYPT="${SKIP_DNSCRYPT:-false}"
+BUST_DNS_CACHE="${BUST_DNS_CACHE:-false}"
+ENABLE_SYSLOG=false
+WEBHOOK_URL="${WEBHOOK_URL:-}"
+CANARY_PUSH_TARGET="${CANARY_PUSH_TARGET:-}"
+CANARY_SSH_KEY="${CANARY_SSH_KEY:-}"
 TAG="[INTERNET-HEALTH-CHECK]"
 
-# Resolve RAM directory fallback (Linux uses /dev/shm, macOS/BSD uses /tmp)
-DEFAULT_RAM_DIR="/dev/shm"
-[[ ! -d "/dev/shm" ]] && DEFAULT_RAM_DIR="/tmp"
+if [[ -z "${DEFAULT_RAM_DIR:-}" ]]; then
+    if [[ -d "/tmp" && "$(df -PT /tmp 2>/dev/null | awk 'NR==2{print $2}')" == "tmpfs" ]]; then
+        DEFAULT_RAM_DIR="/tmp"
+    elif [[ -d "/dev/shm" ]]; then
+        DEFAULT_RAM_DIR="/dev/shm"
+    else
+        DEFAULT_RAM_DIR="/tmp"
+    fi
+fi
 export RAM_STATE_FILE="${RAM_STATE_FILE:-${DEFAULT_RAM_DIR}/internet_health_history.txt}"
 
-# Resolve script directory and source libraries
 export SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly SCRIPT_DIR
 source "${SCRIPT_DIR}/lib/network.sh"
 source "${SCRIPT_DIR}/lib/logger.sh"
 source "${SCRIPT_DIR}/lib/display.sh"
 
-# Display CLI Help Usage
 usage() {
     cat << EOF
 Usage: $0 [OPTIONS]
 
 Options:
-  --log-file FILE       Write logs to FILE instead of stdout
-  --reduce-disk-wear    Reduce log writes: store 30-day logs in RAM (${DEFAULT_RAM_DIR}/),
-                        only write state changes/outages to disk log.
-  --format FORMAT       Output format: 'pretty' (visual checklist) or 'log' (syslog style).
-                        Defaults to 'pretty' in interactive terminals, 'log' when piped/cron.
-  --dashboard FILE      Deploy the Pi-hole v6 style web dashboard (index.html, app.js) at FILE
-                        and write status.json alongside it.
-  --interfaces IFACES   Comma-separated list of interfaces to monitor (e.g. eth0,wlan0).
-                        Defaults to auto-detecting all active interfaces.
-  --pihole-dns HOST     Primary DNS resolver (Pi-hole, router, Unbound...) to test (defaults to
-                        127.0.0.1 on server, or auto-discovered system nameserver on macOS clients).
-  --dnscrypt-host HOST  dnscrypt-proxy host to test (defaults to 127.0.0.1).
-  --skip-dnscrypt       Skip Hop 2 dnscrypt check (useful for client machines on LAN).
-  --upstream-dns HOST   Specify upstream DNS server IP/hostname to query (e.g. 1.1.1.3).
-                        Defaults to auto-detecting server_names from /etc/dnscrypt-proxy/dnscrypt-proxy.toml.
-  -h, --help            Show this help message
+  --log-file FILE             Write logs to FILE instead of stdout
+  --reduce-disk-wear          Reduce log writes: store 30-day logs in RAM (${DEFAULT_RAM_DIR}/),
+                              only write state changes/outages and hourly OK heartbeats to disk log.
+  --format FORMAT             Output format: 'pretty' (visual checklist) or 'log' (syslog style).
+                              Defaults to 'pretty' in interactive terminals, 'log' when piped/cron.
+  --dashboard FILE            Deploy the Pi-hole v6 style web dashboard (index.html, app.js) at FILE
+                              and write status.json alongside it.
+  --interfaces IFACES         Comma-separated list of interfaces to monitor (e.g. eth0,wlan0).
+                              Defaults to auto-detecting all physical interfaces.
+  --pihole-dns HOST           Primary DNS resolver (Pi-hole, router, Unbound...) to test (defaults to
+                              127.0.0.1 on server, or auto-discovered system nameserver on macOS clients).
+  --dnscrypt-host HOST        dnscrypt-proxy host to test (defaults to 127.0.0.1).
+  --skip-dnscrypt             Skip Hop 2 dnscrypt check (useful for client machines on LAN).
+  --upstream-dns HOST         Specify upstream DNS server IP/hostname to query (e.g. 1.1.1.3).
+  --upstream-secondary-dns H  Specify secondary upstream DNS IP to probe (e.g. 9.9.9.9).
+  --bust-dns-cache            Probe an uncached nonce subdomain to bypass Pi-hole / dnscrypt caches.
+  --syslog                    Emit state-transition alerts to local syslog.
+  --webhook-url URL           POST JSON state-transition alerts to WEBHOOK_URL.
+  --canary-push-target T      Stream generated status.json via SSH stdin to receiver USER@HOST.
+  --canary-ssh-key PATH       SSH private key for --canary-push-target.
+  -h, --help                  Show this help message
 
 Examples:
-  # Run a real-time check with visual terminal output
   ./internet_health_check.sh
-
-  # Output standard log lines to stdout
   ./internet_health_check.sh --format log
-
-  # Run on a Mac client pointing to Pi-hole on LAN
-  ./internet_health_check.sh --pihole-dns 192.168.1.2 --skip-dnscrypt
-
-  # Run daemon in cron, writing to RAM and logging transition alerts to disk
+  ./internet_health_check.sh --pihole-dns 192.168.1.2 --skip-dnscrypt --bust-dns-cache
   ./internet_health_check.sh --reduce-disk-wear --log-file logs/health.log --dashboard /var/www/html/index.html
 EOF
 }
 
-# Auto-discover active network interfaces
 discover_interfaces() {
     if [[ "$OSTYPE" == "darwin"* ]]; then
-        # On macOS, search for active physical Ethernet / Wi-Fi links with an assigned IPv4 address
         local active_ifaces=()
         for iface in $(ifconfig -l 2>/dev/null | tr ' ' '\n' | grep -E '^en[0-9]+$'); do
-            if ifconfig "$iface" 2>/dev/null | grep -q 'inet '; then
+            if [[ "$iface" == "en0" ]] || ifconfig "$iface" 2>/dev/null | grep -qE 'status: active|inet '; then
                 active_ifaces+=("$iface")
             fi
         done
@@ -98,17 +104,23 @@ discover_interfaces() {
             echo "en0"
         fi
     elif command -v ip >/dev/null 2>&1; then
-        # On Linux, list physical interfaces excluding local loops, bridges, and docker
-        ip -o link show 2>/dev/null | awk -F': ' '{print $2}' | grep -vE 'lo|docker|veth|br-' || echo "eth0"
+        ip -o link show 2>/dev/null \
+            | awk -F': ' '{print $2}' \
+            | cut -d'@' -f1 \
+            | grep -vE '^(lo|docker|veth|br-|virbr|lxcbr|cni|podman|flannel|tailscale|tun|tap|wg|zt|sit|gre|p2p-)' \
+            || echo "eth0"
     elif command -v ifconfig >/dev/null 2>&1; then
-        ifconfig -s 2>/dev/null | awk '{print $1}' | grep -vE 'Iface|lo|docker|veth|br-' || echo "eth0"
+        ifconfig -s 2>/dev/null \
+            | awk '{print $1}' \
+            | cut -d'@' -f1 \
+            | grep -vE '^(Iface|lo|docker|veth|br-|virbr|lxcbr|cni|podman|flannel|tailscale|tun|tap|wg|zt|sit|gre|p2p-)' \
+            || echo "eth0"
     else
         echo "eth0"
     fi
 }
 
 main() {
-    # Parse CLI Arguments
     while [[ $# -gt 0 ]]; do
         case $1 in
             --log-file)
@@ -151,6 +163,30 @@ main() {
                 UPSTREAM_DNS="$2"
                 shift 2
                 ;;
+            --upstream-secondary-dns)
+                UPSTREAM_SECONDARY_DNS="$2"
+                shift 2
+                ;;
+            --bust-dns-cache)
+                BUST_DNS_CACHE=true
+                shift
+                ;;
+            --syslog)
+                ENABLE_SYSLOG=true
+                shift
+                ;;
+            --webhook-url)
+                WEBHOOK_URL="$2"
+                shift 2
+                ;;
+            --canary-push-target)
+                CANARY_PUSH_TARGET="$2"
+                shift 2
+                ;;
+            --canary-ssh-key)
+                CANARY_SSH_KEY="$2"
+                shift 2
+                ;;
             -h|--help)
                 usage
                 exit 0
@@ -163,20 +199,35 @@ main() {
         esac
     done
 
-    # Acquire exclusive non-blocking lock to prevent overlapping runs
+    # Acquire exclusive non-blocking lock (flock on Linux; mkdir+PID lock on macOS/BSD)
     local lock_file="${DEFAULT_RAM_DIR}/internet_health_check.lock"
     local lock_fd=200
-    local locked=false
+    local locked_flock=false
+    local locked_mkdir=false
     if command -v flock >/dev/null 2>&1; then
-        eval "exec ${lock_fd}>\"${lock_file}\""
+        exec 200>"${lock_file}"
         if ! flock -n ${lock_fd}; then
             echo "$TAG Another instance is already running. Exiting." >&2
             return 0
         fi
-        locked=true
+        locked_flock=true
+    else
+        local lock_dir="${lock_file}.d"
+        if ! mkdir "$lock_dir" 2>/dev/null; then
+            local existing_pid
+            existing_pid=$(cat "$lock_dir/pid" 2>/dev/null || echo "")
+            if [[ -n "$existing_pid" ]] && kill -0 "$existing_pid" 2>/dev/null; then
+                echo "$TAG Another instance is already running. Exiting." >&2
+                return 0
+            fi
+            rm -rf "$lock_dir" 2>/dev/null
+            mkdir "$lock_dir" 2>/dev/null || return 0
+        fi
+        echo "$$" > "$lock_dir/pid" 2>/dev/null || true
+        locked_mkdir=true
     fi
 
-    # Resolve target DNS hosts (defaults to 127.0.0.1 on Linux, auto-detects LAN resolver on macOS)
+    # Resolve target DNS hosts
     if [[ -z "$PIHOLE_DNS" ]]; then
         if [[ "$OSTYPE" == "darwin"* ]]; then
             if command -v nc >/dev/null 2>&1 && nc -z -w1 127.0.0.1 53 >/dev/null 2>&1; then
@@ -198,13 +249,13 @@ main() {
     DNSCRYPT_HOST="${DNSCRYPT_HOST:-127.0.0.1}"
     export DNSCRYPT_HOST
 
-    # In Client mode on macOS, if Pi-hole is remote and dnscrypt was not specified, auto-skip dnscrypt
     if [[ "$OSTYPE" == "darwin"* && "$PIHOLE_DNS" != "127.0.0.1" && "${DNSCRYPT_HOST_SPECIFIED:-false}" != "true" ]]; then
         SKIP_DNSCRYPT=true
     fi
     export SKIP_DNSCRYPT
+    export BUST_DNS_CACHE
+    export UPSTREAM_SECONDARY_DNS
 
-    # Default output format: pretty when attached to a TTY, log otherwise
     if [[ -z "$OUTPUT_FORMAT" ]]; then
         if [[ -t 1 ]]; then
             OUTPUT_FORMAT="pretty"
@@ -214,7 +265,6 @@ main() {
     fi
     export OUTPUT_FORMAT="$OUTPUT_FORMAT"
 
-    # Determine interfaces to check
     local interfaces=()
     if [[ -n "$INTERFACE_OVERRIDE" ]]; then
         IFS=',' read -ra interfaces <<< "$INTERFACE_OVERRIDE"
@@ -229,154 +279,314 @@ main() {
         exit 1
     fi
 
-    # Ensure log file rotation check if file logging enabled
     if [[ "$LOG_TO_FILE" == "true" ]]; then
         rotate_log
     fi
 
-    # Detect upstream resolver IP (e.g. 1.1.1.3 for cloudflare-family)
     local detected_upstream
-    detected_upstream=$(detect_upstream_dns "$UPSTREAM_DNS")
+    detect_upstream_dns "$UPSTREAM_DNS" "$UPSTREAM_SECONDARY_DNS" >/dev/null
+    detected_upstream="$UPSTREAM_PRIMARY_IP"
+    local detected_secondary="${UPSTREAM_SECONDARY_IP:-}"
 
-    # Print pretty header if pretty output format selected
     if [[ "$OUTPUT_FORMAT" == "pretty" ]]; then
         print_pretty_header
     fi
 
-    # JSON accumulator structure for status generation
-    local json_ifaces=""
+    # Tab-delimited interface records safely passed to Python telemetry builder
+    local tsv_ifaces=""
 
-    # Process each interface
     for iface in "${interfaces[@]}"; do
+        # Reset all per-interface globals so nothing leaks from previous interface
+        DIAG_LOG_LINES=()
+        CONNECTIVITY_RESULT="DOWN"
+        CONNECTIVITY_LATENCY=-1
+        CONNECTIVITY_LOSS=100
+        CONNECTIVITY_DEGRADED=false
+        CONNECTIVITY_DEGRADED_REASON=""
+        PIHOLE_OK=false
+        PIHOLE_LATENCY=-1
+        DNSCRYPT_OK=false
+        DNSCRYPT_LATENCY=-1
+        CLOUDFLARE_OK=false
+        CLOUDFLARE_LATENCY=-1
+        UPSTREAM_SECONDARY_OK=true
+        UPSTREAM_SECONDARY_LATENCY=-1
+        DNS_OK_RESULT="false"
+        DNS_DEGRADED=false
+        DNS_DEGRADED_REASON=""
+
+        local iface_exists="false"
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            ifconfig "$iface" >/dev/null 2>&1 && iface_exists="true"
+        elif [[ -d "${NET_SYSFS_ROOT:-/sys/class/net}/$iface" ]]; then
+            iface_exists="true"
+        elif command -v ip >/dev/null 2>&1 && ip link show "$iface" >/dev/null 2>&1; then
+            iface_exists="true"
+        fi
+
+        local admin_up
+        admin_up=$(get_interface_admin_up "$iface")
         local carrier
         carrier=$(get_interface_carrier "$iface")
         local local_ip
         local_ip=$(get_interface_ip "$iface")
+        local has_ip="false"
+        [[ -n "$local_ip" ]] && has_ip="true"
 
-        if [[ -z "$local_ip" || "$carrier" -eq 0 ]]; then
-            # Interface inactive / disconnected
+        local client_ok="true"
+        local iface_state="online"
+        local is_iface_degraded="false"
+        local iface_deg_reason=""
+
+        if (( admin_up == 0 )); then
+            # Administratively down / unused NIC (e.g. disabled wlan0 on wired host)
+            iface_state="unused"
+            CONNECTIVITY_RESULT="UNUSED"
+            CONNECTIVITY_LOSS=0
+            DNS_OK_RESULT="true"
+            PIHOLE_OK="null"
+            DNSCRYPT_OK="null"
+            CLOUDFLARE_OK="null"
+            UPSTREAM_SECONDARY_OK="null"
+        elif [[ -z "$local_ip" || "$carrier" -eq 0 ]]; then
+            iface_state="down"
             CONNECTIVITY_RESULT="DOWN"
             CONNECTIVITY_LATENCY=-1
             CONNECTIVITY_LOSS=100
-            PIHOLE_OK=false
-            PIHOLE_LATENCY=-1
-            DNSCRYPT_OK=false
-            DNSCRYPT_LATENCY=-1
-            CLOUDFLARE_OK=false
-            CLOUDFLARE_LATENCY=-1
+            client_ok="false"
             DNS_OK_RESULT="false"
+            PIHOLE_OK="null"
+            DNSCRYPT_OK="null"
+            CLOUDFLARE_OK="null"
+            UPSTREAM_SECONDARY_OK="null"
+            if (( carrier == 0 )); then
+                net_log "[$iface] Test: Fail - Physical Link DISCONNECTED / NO CARRIER"
+            else
+                net_log "[$iface] Test: Fail - No IP address assigned (DHCP missing)"
+            fi
         else
-            # 1. Connectivity ICMP Check
-            check_connectivity "$iface"
-
-            # 2. DNS Chain Resolution Check
+            check_connectivity "$iface" "$local_ip"
             check_dns_chain "$iface" "$local_ip"
+
+            if [[ "$DNS_DEGRADED" == "true" ]]; then
+                is_iface_degraded="true"
+                iface_deg_reason="$DNS_DEGRADED_REASON"
+            elif [[ "$CONNECTIVITY_DEGRADED" == "true" ]]; then
+                is_iface_degraded="true"
+                iface_deg_reason="$CONNECTIVITY_DEGRADED_REASON"
+            fi
+
+            if [[ "$CONNECTIVITY_RESULT" != "OK" || "$DNS_OK_RESULT" != "true" ]]; then
+                iface_state="down"
+            elif [[ "$is_iface_degraded" == "true" ]]; then
+                iface_state="degraded"
+            else
+                iface_state="online"
+            fi
         fi
 
-        # Check for state change to determine whether to write to persistent log
-        if [[ "$LOG_TO_FILE" == "true" && "$REDUCE_DISK_WEAR" == "true" ]]; then
-            # In reduce-disk-wear daemon mode, only write state transitions to disk
-            if detect_state_change "$iface" "$CONNECTIVITY_RESULT" "$DNS_OK_RESULT"; then
-                if [[ "$CONNECTIVITY_RESULT" == "OK" && "$DNS_OK_RESULT" == "true" ]]; then
-                    log "[$iface] OK"
+        # Disk logging & alerting MUST evaluate detect_state_change BEFORE record_run()
+        if [[ "$iface_state" != "unused" ]]; then
+            local status_word="DOWN"
+            if [[ "$CONNECTIVITY_RESULT" == "OK" && "$DNS_OK_RESULT" == "true" ]]; then
+                if [[ "$is_iface_degraded" == "true" ]]; then
+                    status_word="DEGRADED"
                 else
-                    log "[$iface] DOWN"
+                    status_word="OK"
                 fi
             fi
-        else
-            # Standard mode or manual run: always output state
-            if [[ "$CONNECTIVITY_RESULT" == "OK" && "$DNS_OK_RESULT" == "true" ]]; then
-                log "[$iface] OK"
-            else
-                log "[$iface] DOWN"
+
+            local changed=1
+            if detect_state_change "$iface" "$CONNECTIVITY_RESULT" "$DNS_OK_RESULT" "$is_iface_degraded"; then
+                changed=0
             fi
+
+            if [[ "$REDUCE_DISK_WEAR" != "true" ]] || (( changed == 0 )); then
+                if (( ${#DIAG_LOG_LINES[@]} > 0 )); then
+                    for dline in "${DIAG_LOG_LINES[@]}"; do
+                        log "$dline"
+                    done
+                fi
+                if [[ "$status_word" == "DEGRADED" && -n "$iface_deg_reason" ]]; then
+                    log "[$iface] DEGRADED - $iface_deg_reason"
+                else
+                    log "[$iface] $status_word"
+                fi
+            elif [[ "$status_word" == "OK" ]] && should_log_hourly_heartbeat "$iface"; then
+                log "[$iface] OK"
+            fi
+
+            if (( changed == 0 )); then
+                local alert_msg="[$iface] State transition -> $status_word${iface_deg_reason:+ ($iface_deg_reason)}"
+                [[ "$ENABLE_SYSLOG" == "true" ]] && syslog_alert "$alert_msg" "user.warning"
+                [[ -n "${WEBHOOK_URL:-}" ]] && send_webhook_alert "$iface" "$status_word" "$alert_msg"
+            fi
+
+            record_run "$iface" "$CONNECTIVITY_RESULT" "$DNS_OK_RESULT" "$PIHOLE_OK" "$DNSCRYPT_OK" "$CLOUDFLARE_OK" \
+                       "$PIHOLE_LATENCY" "$DNSCRYPT_LATENCY" "$CLOUDFLARE_LATENCY" "$CONNECTIVITY_LOSS" \
+                       "$client_ok" "$iface_state" "$CONNECTIVITY_LATENCY"
         fi
 
-        # Pretty terminal display
         if [[ "$OUTPUT_FORMAT" == "pretty" ]]; then
             print_pretty_interface "$iface" "$local_ip" "$carrier" \
                 "$CONNECTIVITY_RESULT" "$CONNECTIVITY_LATENCY" "$CONNECTIVITY_LOSS" \
                 "$PIHOLE_OK" "$PIHOLE_LATENCY" "$DNSCRYPT_OK" "$DNSCRYPT_LATENCY" \
-                "$CLOUDFLARE_OK" "$CLOUDFLARE_LATENCY" "$detected_upstream" "$DNS_OK_RESULT"
+                "$CLOUDFLARE_OK" "$CLOUDFLARE_LATENCY" "$detected_upstream" "$DNS_OK_RESULT" \
+                "$admin_up" "$iface_deg_reason" "$detected_secondary" "$UPSTREAM_SECONDARY_OK" "$UPSTREAM_SECONDARY_LATENCY"
         fi
 
-        # Update stateless RAM history buffer
-        record_run "$iface" "$CONNECTIVITY_RESULT" "$DNS_OK_RESULT" "$PIHOLE_OK" "$DNSCRYPT_OK" "$CLOUDFLARE_OK" \
-                   "$PIHOLE_LATENCY" "$DNSCRYPT_LATENCY" "$CLOUDFLARE_LATENCY" "$CONNECTIVITY_LOSS"
-
-        # Build JSON block for interface
-        local iface_exists="true"
-        [[ -z "$local_ip" ]] && iface_exists="false"
-
-        local block
-        block=$(cat << EOF
-    "$iface": {
-      "exists": $iface_exists,
-      "connectivity": "$CONNECTIVITY_RESULT",
-      "dns_ok": $DNS_OK_RESULT,
-      "pihole": $PIHOLE_OK,
-      "dnscrypt": $DNSCRYPT_OK,
-      "cloudflare": $CLOUDFLARE_OK,
-      "upstream_ip": "$detected_upstream",
-      "latency_pihole": $PIHOLE_LATENCY,
-      "latency_dnscrypt": $DNSCRYPT_LATENCY,
-      "latency_cloudflare": $CLOUDFLARE_LATENCY,
-      "packet_loss": $CONNECTIVITY_LOSS
-    }
-EOF
-)
-        if [[ -n "$json_ifaces" ]]; then
-            json_ifaces="$json_ifaces,$block"
+        # Sanitize reason string for TSV transport
+        local safe_reason="${iface_deg_reason//$'\t'/ }"
+        safe_reason="${safe_reason//$'\n'/ }"
+        local row
+        row=$(printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s' \
+            "$iface" "$iface_exists" "$admin_up" "$carrier" "$has_ip" "$local_ip" "$iface_state" \
+            "$CONNECTIVITY_RESULT" "$DNS_OK_RESULT" "$is_iface_degraded" "$safe_reason" "$client_ok" \
+            "$PIHOLE_OK" "$DNSCRYPT_OK" "$CLOUDFLARE_OK" "$UPSTREAM_SECONDARY_OK" \
+            "$detected_upstream" "$detected_secondary" \
+            "$CONNECTIVITY_LATENCY" "$PIHOLE_LATENCY" "$DNSCRYPT_LATENCY" "$CLOUDFLARE_LATENCY" \
+            "$UPSTREAM_SECONDARY_LATENCY" )
+        row="${row}"$'\t'"${CONNECTIVITY_LOSS}"
+        if [[ -n "$tsv_ifaces" ]]; then
+            tsv_ifaces="${tsv_ifaces}"$'\n'"${row}"
         else
-            json_ifaces="$block"
+            tsv_ifaces="${row}"
         fi
     done
 
-    # Generate status.json & HTML dashboard if --dashboard specified
     if [[ -n "$HTML_FILE" ]]; then
-        generate_status_json "$json_ifaces" "$HTML_FILE"
+        generate_status_json "$tsv_ifaces" "$HTML_FILE" "$detected_upstream" "$detected_secondary"
     fi
 
-    if [[ "$locked" == "true" ]]; then
+    if [[ "$locked_flock" == "true" ]]; then
         flock -u ${lock_fd} 2>/dev/null || true
-        eval "exec ${lock_fd}>&-" 2>/dev/null || true
+        exec 200>&- 2>/dev/null || true
+    elif [[ "$locked_mkdir" == "true" ]]; then
+        rm -rf "${lock_file}.d" 2>/dev/null || true
     fi
 }
 
 generate_status_json() {
-    local ifaces_json=$1 output_target=$2
+    local tsv_ifaces=$1 output_target=$2 upstream_ip=${3:-"1.1.1.1"} secondary_ip=${4:-""}
     local target_dir
     target_dir=$(dirname "$output_target")
     mkdir -p "$target_dir" 2>/dev/null
 
     local json_target="$target_dir/status.json"
-    local json_tmp="/tmp/status.json.tmp.$$$RANDOM"
+    local dest_file
+    local tmp_dir
 
-    # Calculate overall system health based on current live interface connectivity
-    local system_status="Healthy"
-    if echo "$ifaces_json" | grep -q '"connectivity": "DOWN"' || echo "$ifaces_json" | grep -q '"dns_ok": false'; then
-        system_status="Degraded"
-    fi
-
-    # Single-pass consolidated Python telemetry aggregator
-    generate_telemetry_status_json "$system_status" "$ifaces_json" "$json_tmp"
-
-    # When reduce-disk-wear is active, keep status.json in RAM and symlink from webroot
-    if [[ "$REDUCE_DISK_WEAR" == true && -d "$DEFAULT_RAM_DIR" ]]; then
-        local ram_json="${DEFAULT_RAM_DIR}/status.json"
-        mv -f "$json_tmp" "$ram_json" 2>/dev/null || cp -f "$json_tmp" "$ram_json" 2>/dev/null || cat "$json_tmp" > "$ram_json" 2>/dev/null || true
-        chmod 666 "$ram_json" 2>/dev/null || true
-        if [[ ! -L "$json_target" || "$(readlink "$json_target" 2>/dev/null)" != "$ram_json" ]]; then
-            ln -sf "$ram_json" "$json_target" 2>/dev/null || true
-        fi
+    if [[ "$REDUCE_DISK_WEAR" == "true" && -d "$DEFAULT_RAM_DIR" ]]; then
+        dest_file="${DEFAULT_RAM_DIR}/status.json"
+        tmp_dir="${DEFAULT_RAM_DIR}"
     else
-        local real_target
-        real_target=$(realpath "$json_target" 2>/dev/null || echo "$json_target")
-        mv -f "$json_tmp" "$real_target" 2>/dev/null || cp -f "$json_tmp" "$real_target" 2>/dev/null || cat "$json_tmp" > "$real_target" 2>/dev/null || true
+        dest_file=$(realpath "$json_target" 2>/dev/null || echo "$json_target")
+        tmp_dir=$(dirname "$dest_file")
     fi
-    rm -f "$json_tmp" 2>/dev/null || true
 
-    # Only copy static web assets if missing or changed (prevents redundant disk writes every run)
+    local json_tmp="${tmp_dir}/.status.json.tmp.$$.${RANDOM}"
+
+    local host_name
+    host_name=$(hostname 2>/dev/null || echo "unknown")
+
+    local telemetry_args=(--out "$json_tmp" --ram-file "$RAM_STATE_FILE")
+    [[ "$LOG_TO_FILE" == "true" && -n "$LOG_FILE" ]] && telemetry_args+=(--log-file "$LOG_FILE")
+
+    # Build JSON safely via Python (zero raw bash JSON string interpolation) and pipe to telemetry.py
+    local py_err
+    if ! printf '%s\n' "$tsv_ifaces" | python3 -c '
+import json, os, sys
+
+def b(s):
+    v = s.strip().lower()
+    if v in ("true", "1", "yes"): return True
+    if v in ("false", "0", "no"): return False
+    return None
+
+def n(s, default=-1):
+    try: return int(float(s))
+    except Exception: return default
+
+def f(s, default=0.0):
+    try: return float(s)
+    except Exception: return default
+
+ifaces = {}
+for line in sys.stdin:
+    line = line.rstrip("\n")
+    if not line:
+        continue
+    cols = line.split("\t")
+    if len(cols) < 24:
+        continue
+    name = cols[0]
+    ifaces[name] = {
+        "exists": b(cols[1]) is True,
+        "admin_up": (cols[2] == "1"),
+        "carrier": n(cols[3], 0),
+        "has_ip": b(cols[4]) is True,
+        "ip": cols[5],
+        "state": cols[6],
+        "connectivity": cols[7],
+        "dns_ok": b(cols[8]) is True,
+        "degraded": b(cols[9]) is True,
+        "degradation_reason": cols[10],
+        "client_ok": b(cols[11]) is True,
+        "pihole": b(cols[12]),
+        "dnscrypt": b(cols[13]),
+        "cloudflare": b(cols[14]),
+        "upstream_secondary_ok": b(cols[15]),
+        "upstream_ip": cols[16],
+        "upstream_secondary_ip": cols[17],
+        "latency_ping": f(cols[18], -1.0),
+        "latency_pihole": n(cols[19], -1),
+        "latency_dnscrypt": n(cols[20], -1),
+        "latency_cloudflare": n(cols[21], -1),
+        "latency_upstream_secondary": n(cols[22], -1),
+        "packet_loss": f(cols[23], 0.0),
+    }
+
+pi_host = os.environ.get("PIHOLE_DNS", "127.0.0.1")
+dc_host = os.environ.get("DNSCRYPT_HOST", "127.0.0.1")
+pi_port = os.environ.get("PIHOLE_PORT", "53")
+dc_port = os.environ.get("DNSCRYPT_PORT", "5053")
+payload = {
+    "metadata": {
+        "host": sys.argv[1],
+        "pihole_target": pi_host + ":" + pi_port,
+        "dnscrypt_target": dc_host + ":" + dc_port,
+        "skip_dnscrypt": os.environ.get("SKIP_DNSCRYPT", "false") == "true",
+        "upstream_ip": sys.argv[2],
+        "upstream_secondary_ip": sys.argv[3],
+        "upstream_protocol": "UDP/53",
+        "cache_busted": os.environ.get("BUST_DNS_CACHE", "false") == "true",
+        "thresholds": {
+            "pihole_ms": n(os.environ.get("PIHOLE_LATENCY_WARN_MS", "150"), 150),
+            "dnscrypt_ms": n(os.environ.get("DNSCRYPT_LATENCY_WARN_MS", "200"), 200),
+            "upstream_ms": n(os.environ.get("UPSTREAM_LATENCY_WARN_MS", "200"), 200),
+            "loss_pct": f(os.environ.get("PACKET_LOSS_WARN_PCT", "5"), 5.0),
+        },
+    },
+    "interfaces": ifaces,
+}
+print(json.dumps(payload))
+' "$host_name" "$upstream_ip" "$secondary_ip" | python3 "${SCRIPT_DIR}/lib/telemetry.py" "${telemetry_args[@]}"; then
+        echo "$TAG Telemetry aggregator failed for $dest_file" >&2
+        rm -f "$json_tmp" 2>/dev/null || true
+        return 1
+    fi
+
+    # Atomic same-filesystem move + clean 644 permissions
+    chmod 644 "$json_tmp" 2>/dev/null || true
+    mv -f "$json_tmp" "$dest_file" 2>/dev/null || { rm -f "$json_tmp" 2>/dev/null || true; return 1; }
+
+    if [[ "$REDUCE_DISK_WEAR" == "true" && -d "$DEFAULT_RAM_DIR" ]]; then
+        if [[ ! -L "$json_target" || "$(readlink "$json_target" 2>/dev/null)" != "$dest_file" ]]; then
+            ln -sf "$dest_file" "$json_target" 2>/dev/null || true
+        fi
+    fi
+
+    # Copy static web assets only when changed (prevents disk wear)
     if [[ "$output_target" == *.html ]]; then
         if [[ -f "${SCRIPT_DIR}/templates/index.html" ]]; then
             if [[ ! -f "$output_target" ]] || ! cmp -s "${SCRIPT_DIR}/templates/index.html" "$output_target"; then
@@ -390,310 +600,13 @@ generate_status_json() {
             fi
         fi
     fi
-}
 
-generate_telemetry_status_json() {
-    local system_status=$1 ifaces_json=$2 out_file=$3
-
-    python3 -c '
-import os, sys, json, time
-from datetime import datetime, timedelta, timezone
-
-system_status = sys.argv[1]
-raw_ifaces = sys.argv[2]
-out_file = sys.argv[3]
-
-try:
-    ifaces = json.loads("{" + raw_ifaces + "}")
-except Exception:
-    ifaces = {}
-
-ram_file = os.environ.get("RAM_STATE_FILE") or ("/tmp/internet_health_history.txt" if not os.path.exists("/dev/shm") else "/dev/shm/internet_health_history.txt")
-log_file = os.environ.get("LOG_FILE", "")
-
-hours_status = {"Today": ["OK"]*24, "Yesterday": ["OK"]*24, "2 Days Ago": ["OK"]*24}
-hours_earliest = {"Today": [""]*24, "Yesterday": [""]*24, "2 Days Ago": [""]*24}
-hours_ifaces = {"Today": [set() for _ in range(24)],
-                "Yesterday": [set() for _ in range(24)],
-                "2 Days Ago": [set() for _ in range(24)]}
-hours_nodes = {"Today": [{"pi": True, "dns": True, "cf": True} for _ in range(24)],
-               "Yesterday": [{"pi": True, "dns": True, "cf": True} for _ in range(24)],
-               "2 Days Ago": [{"pi": True, "dns": True, "cf": True} for _ in range(24)]}
-
-now_dt = datetime.now()
-today_date = now_dt.date()
-current_hour = now_dt.hour
-now_ts = time.time()
-max_age_seconds = 72 * 3600
-
-# Mark future hours today as INACTIVE (gray)
-for h in range(current_hour + 1, 24):
-    hours_status["Today"][h] = "INACTIVE"
-
-incidents = []
-seen_events = set()
-
-# 1. Read RAM history file
-if os.path.exists(ram_file):
-    try:
-        with open(ram_file, "r") as f:
-            ram_lines = f.readlines()
-        for line in ram_lines:
-            parts = line.strip().split(",")
-            if len(parts) >= 4:
-                try:
-                    ts = float(parts[0])
-                    dt = datetime.fromtimestamp(ts)
-                    iface = parts[1]
-                    conn = parts[2]
-                    dns = parts[3]
-                    pihole_ok = (parts[5] == "true") if len(parts) > 5 else True
-                    dnscrypt_ok = (parts[6] == "true") if len(parts) > 6 else True
-                    cloudflare_ok = (parts[7] == "true") if len(parts) > 7 else (conn == "OK" and dns == "true")
-
-                    days_diff = (today_date - dt.date()).days
-                    if 0 <= days_diff < 3:
-                        day_label = ["Today", "Yesterday", "2 Days Ago"][days_diff]
-                        hour_idx = dt.hour
-                        hours_nodes[day_label][hour_idx] = {"pi": pihole_ok, "dns": dnscrypt_ok, "cf": cloudflare_ok}
-                        if conn == "DOWN" or dns == "false":
-                            if iface == "wlan0":
-                                if hours_status[day_label][hour_idx] != "DANGER":
-                                    hours_status[day_label][hour_idx] = "WARNING"
-                            else:
-                                hours_status[day_label][hour_idx] = "DANGER"
-                            if iface:
-                                hours_ifaces[day_label][hour_idx].add(iface)
-                            if not hours_earliest[day_label][hour_idx]:
-                                hours_earliest[day_label][hour_idx] = dt.strftime("%Y-%m-%d %H:%M:%S")
-                except Exception:
-                    pass
-    except Exception:
-        pass
-
-# 2. Read Persistent Disk Log(s)
-candidate_logs = []
-if log_file and os.path.exists(log_file):
-    candidate_logs.append(log_file)
-script_dir = os.environ.get("SCRIPT_DIR", "")
-if script_dir:
-    default_log = os.path.join(script_dir, "logs", "internet_health.log")
-    if os.path.exists(default_log) and default_log not in candidate_logs:
-        candidate_logs.append(default_log)
-for path in ["/var/log/internet_health.log"]:
-    if os.path.exists(path) and path not in candidate_logs:
-        candidate_logs.append(path)
-
-for c_log in candidate_logs:
-    try:
-        with open(c_log, "r") as f:
-            lines = f.readlines()
-        # For history grid (chronological)
-        for line in lines:
-            if "[INTERNET-HEALTH-CHECK]" in line:
-                parts = line.strip().split()
-                if len(parts) >= 2:
-                    time_str = parts[0] + " " + parts[1]
-                    try:
-                        dt = datetime.strptime(time_str, "%Y-%m-%d %H:%M:%S")
-                        days_diff = (today_date - dt.date()).days
-                        if 0 <= days_diff < 3:
-                            day_label = ["Today", "Yesterday", "2 Days Ago"][days_diff]
-                            hour_idx = dt.hour
-
-                            if "DOWN" in line or "Fail" in line:
-                                if "[eth0]" in line: hours_ifaces[day_label][hour_idx].add("eth0")
-                                if "[wlan0]" in line: hours_ifaces[day_label][hour_idx].add("wlan0")
-
-                            if "[eth0]" in line and ("DOWN" in line or "Fail" in line or "CONNECTIVITY OUTAGE" in line):
-                                hours_status[day_label][hour_idx] = "DANGER"
-                                if not hours_earliest[day_label][hour_idx]:
-                                    hours_earliest[day_label][hour_idx] = time_str
-                            elif ("DOWN" in line or "Fail" in line) and hours_status[day_label][hour_idx] != "DANGER":
-                                hours_status[day_label][hour_idx] = "WARNING"
-                                if not hours_earliest[day_label][hour_idx]:
-                                    hours_earliest[day_label][hour_idx] = time_str
-
-                            if "Fail via Pi-hole" in line:
-                                hours_nodes[day_label][hour_idx]["pi"] = False
-                            elif "Fail via dnscrypt" in line:
-                                hours_nodes[day_label][hour_idx]["dns"] = False
-                            elif "Fail via Cloudflare" in line or "CONNECTIVITY OUTAGE" in line or "Fail during Ping" in line:
-                                hours_nodes[day_label][hour_idx]["cf"] = False
-                    except Exception:
-                        pass
-
-        # For incidents (reverse order for recency, up to 10 incidents within 72h)
-        for line in reversed(lines):
-            if len(incidents) >= 10:
-                break
-            if "[INTERNET-HEALTH-CHECK]" in line and "DOWN" in line:
-                parts = line.strip().split()
-                if len(parts) >= 2:
-                    time_str = parts[0] + " " + parts[1]
-                    try:
-                        dt = datetime.strptime(time_str, "%Y-%m-%d %H:%M:%S")
-                        ts = dt.timestamp()
-                        if (now_ts - ts) <= max_age_seconds:
-                            iface = "eth0" if "[eth0]" in line else ("wlan0" if "[wlan0]" in line else "eth0")
-                            key = f"{time_str}_{iface}"
-                            if key not in seen_events:
-                                seen_events.add(key)
-                                is_total_outage = (iface == "eth0" or "CONNECTIVITY OUTAGE" in line)
-                                incidents.append({
-                                    "type": "outage" if is_total_outage else "warning",
-                                    "badge": "Outage" if is_total_outage else "Warning",
-                                    "timestamp": f"{time_str} ({iface})",
-                                    "description": "DOWN - CONNECTIVITY OUTAGE detected" if is_total_outage else f"Interface link down ({iface})",
-                                    "duration": ""
-                                })
-                    except Exception:
-                        pass
-    except Exception:
-        pass
-
-# Supplement incidents from RAM file if < 10
-if len(incidents) < 10 and os.path.exists(ram_file):
-    try:
-        with open(ram_file, "r") as f:
-            ram_lines = f.readlines()
-        for line in reversed(ram_lines):
-            if len(incidents) >= 10:
-                break
-            parts = line.strip().split(",")
-            if len(parts) >= 4 and (parts[2] == "DOWN" or parts[3] == "false"):
-                try:
-                    ts = float(parts[0])
-                    if (now_ts - ts) <= max_age_seconds:
-                        dt = datetime.fromtimestamp(ts)
-                        ts_str = dt.strftime("%Y-%m-%d %H:%M:%S")
-                        iface = parts[1] if len(parts) > 1 else "wlan0"
-                        key = f"{ts_str}_{iface}"
-                        if key not in seen_events:
-                            seen_events.add(key)
-                            is_total_outage = (iface == "eth0" or parts[2] == "DOWN")
-                            incidents.append({
-                                "type": "outage" if is_total_outage else "warning",
-                                "badge": "Outage" if is_total_outage else "Warning",
-                                "timestamp": f"{ts_str} ({iface})",
-                                "description": "DOWN - CONNECTIVITY OUTAGE detected" if is_total_outage else f"Interface link down ({iface})",
-                                "duration": ""
-                            })
-                except Exception:
-                    pass
-    except Exception:
-        pass
-
-# Calculate 72h SLA Percentage
-active_hours = 0
-healthy_hours = 0
-for label in ["2 Days Ago", "Yesterday", "Today"]:
-    for h in range(24):
-        st = hours_status[label][h]
-        if st != "INACTIVE":
-            active_hours += 1
-            if st == "OK":
-                healthy_hours += 1
-
-sla_pct = round((healthy_hours / active_hours * 100.0), 2) if active_hours > 0 else 100.0
-
-# Format History Result
-history_res = []
-for days_ago, label in [(2, "2 Days Ago"), (1, "Yesterday"), (0, "Today")]:
-    target_dt = now_dt - timedelta(days=days_ago)
-    date_str = target_dt.strftime("%-d %b")
-    day_cells = []
-    for h in range(24):
-        st = hours_status[label][h]
-        earliest = hours_earliest[label][h] if st != "OK" else ""
-        nodes = hours_nodes[label][h] if st != "OK" else {"pi": True, "dns": True, "cf": True}
-        iface_list = sorted(list(hours_ifaces[label][h])) if st != "OK" else []
-        day_cells.append({
-            "hour": h,
-            "status": st,
-            "uptime": 100 if st == "OK" else 0,
-            "earliest_issue": earliest,
-            "iface": ", ".join(iface_list),
-            "pihole": nodes["pi"],
-            "dnscrypt": nodes["dns"],
-            "cloudflare": nodes["cf"]
-        })
-    history_res.append({"label": label, "date": date_str, "hours": day_cells})
-
-now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-payload = {
-    "timestamp": now_iso,
-    "status": system_status,
-    "sla_percentage": sla_pct,
-    "interfaces": ifaces,
-    "history": history_res,
-    "incidents": incidents
-}
-
-with open(out_file, "w") as f:
-    json.dump(payload, f, indent=2)
-' "$system_status" "$ifaces_json" "$out_file" 2>/dev/null || true
-
-    # Fallback if Python encountered an unhandled issue
-    if [[ ! -s "$out_file" ]]; then
-        cat << EOF > "$out_file"
-{
-  "timestamp": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
-  "status": "$system_status",
-  "sla_percentage": 100.0,
-  "interfaces": {
-$ifaces_json
-  },
-  "history": [{"label":"2 Days Ago","hours":[]},{"label":"Yesterday","hours":[]},{"label":"Today","hours":[]}],
-  "incidents": []
-}
-EOF
+    # Push canary telemetry to central dashboard host if configured
+    if [[ -n "${CANARY_PUSH_TARGET:-}" && -s "$dest_file" ]]; then
+        local ssh_opts=(-o BatchMode=yes -o ConnectTimeout=5)
+        [[ -n "${CANARY_SSH_KEY:-}" ]] && ssh_opts+=(-i "$CANARY_SSH_KEY")
+        ssh "${ssh_opts[@]}" "$CANARY_PUSH_TARGET" < "$dest_file" >/dev/null 2>&1 || true
     fi
-}
-
-build_72h_history_json() {
-    python3 -c '
-import json, os, sys
-target = os.environ.get("STATUS_JSON", "/var/www/html/status.json")
-if os.path.exists(target):
-    try:
-        with open(target) as f:
-            print(json.dumps(json.load(f).get("history", [])))
-            sys.exit(0)
-    except Exception:
-        pass
-print("[{\"label\":\"2 Days Ago\",\"hours\":[]},{\"label\":\"Yesterday\",\"hours\":[]},{\"label\":\"Today\",\"hours\":[]}]")
-' 2>/dev/null || echo '[{"label":"2 Days Ago","hours":[]},{"label":"Yesterday","hours":[]},{"label":"Today","hours":[]}]'
-}
-
-calculate_sla_percentage() {
-    python3 -c '
-import json, os, sys
-target = os.environ.get("STATUS_JSON", "/var/www/html/status.json")
-if os.path.exists(target):
-    try:
-        with open(target) as f:
-            print(f"{float(json.load(f).get(\"sla_percentage\", 100.0)):.2f}")
-            sys.exit(0)
-    except Exception:
-        pass
-print("100.00")
-' 2>/dev/null || echo "100.00"
-}
-
-extract_incidents_json() {
-    python3 -c '
-import json, os, sys
-target = os.environ.get("STATUS_JSON", "/var/www/html/status.json")
-if os.path.exists(target):
-    try:
-        with open(target) as f:
-            print(json.dumps(json.load(f).get("incidents", [])))
-            sys.exit(0)
-    except Exception:
-        pass
-print("[]")
-' 2>/dev/null || echo '[]'
 }
 
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then

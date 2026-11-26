@@ -63,6 +63,8 @@ run_with_mocks() {
 #!/bin/bash
 HOME="$TEST_HOME"
 export HOME
+export TELEMETRY_NO_DEFAULT_LOGS=1
+export PING_FALLBACK_TARGET=""
 source "$SCRIPT_PATH"
 export RAM_STATE_FILE="$TEST_RAM_FILE"
 main --log-file "$TEST_LOG_FILE" --dashboard "$TEST_HOME/status.json" --format log
@@ -72,6 +74,9 @@ TESTEOF
 #!/bin/bash
 HOME="$TEST_HOME"
 export HOME
+export TELEMETRY_NO_DEFAULT_LOGS=1
+export PING_FALLBACK_TARGET=""
+export PING_COUNT=4
 
 # Override ip
 ip() {
@@ -95,7 +100,7 @@ ping() {
     (( PING_MOCK == 0 )) && return 0 || return 1
 }
 
-# Override dig
+# Override dig (includes realistic NOERROR & ANSWER header)
 dig() {
     local success=1
     if [[ "$*" =~ @127\.0\.0\.1 ]]; then
@@ -109,10 +114,15 @@ dig() {
     fi
     
     if (( success == 0 )); then
+        echo ";; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 1000"
+        echo ";; flags: qr rd ra; QUERY: 1, ANSWER: 1, AUTHORITY: 0, ADDITIONAL: 0"
         echo ";; Query time: 10 msec"
         return 0
     else
-        return 1
+        echo ";; ->>HEADER<<- opcode: QUERY, status: SERVFAIL, id: 1000"
+        echo ";; flags: qr rd ra; QUERY: 1, ANSWER: 0, AUTHORITY: 0, ADDITIONAL: 0"
+        echo ";; Query time: 2 msec"
+        return 0
     fi
 }
 
@@ -297,28 +307,25 @@ export RAM_STATE_FILE="$TEST_RAM_FILE"
 source "$SCRIPT_PATH"
 
 # Scenario 1: No previous history (should detect change/need log)
-if detect_state_change eth0 "OK" "true"; then
+if detect_state_change eth0 "OK" "true" "false"; then
     echo "scenario1=pass"
 else
     echo "scenario1=fail"
 fi
 
-# Write first OK run
-record_run eth0 "OK" "true" "true" "true" "true" 2 14 11 0
-# Write second OK run (simulating current run with identical state)
+# Record previous OK run (T-1)
 record_run eth0 "OK" "true" "true" "true" "true" 2 14 11 0
 
-# Scenario 2: Current state is identical to last run (should NOT detect change)
-if detect_state_change eth0 "OK" "true"; then
+# Scenario 2: Current state (T0) is identical to T-1 (should NOT detect change)
+if detect_state_change eth0 "OK" "true" "false"; then
     echo "scenario2=fail"
 else
     echo "scenario2=pass"
 fi
+record_run eth0 "OK" "true" "true" "true" "true" 2 14 11 0
 
-# Scenario 3: State changes from OK to DOWN
-# Write current run as DOWN
-record_run eth0 "DOWN" "false" "false" "false" "false" -1 -1 -1 100
-if detect_state_change eth0 "DOWN" "false"; then
+# Scenario 3: Next state (T+1) changes from OK to DOWN BEFORE record_run()
+if detect_state_change eth0 "DOWN" "false" "false"; then
     echo "scenario3=pass"
 else
     echo "scenario3=fail"
@@ -347,12 +354,11 @@ test_11_detect_state_change_recent_suppression() {
 export RAM_STATE_FILE="$TEST_RAM_FILE"
 source "$SCRIPT_PATH"
 
-# Record two identical OK runs
-record_run eth0 "OK" "true" "true" "true" "true" 2 14 11 0
+# Record previous OK run (T-1)
 record_run eth0 "OK" "true" "true" "true" "true" 2 14 11 0
 
-# Test if identical state is suppressed
-if detect_state_change eth0 "OK" "true"; then
+# Test if identical current OK state (T0) is suppressed BEFORE record_run
+if detect_state_change eth0 "OK" "true" "false"; then
     echo "suppress=false"
 else
     echo "suppress=true"
@@ -378,13 +384,11 @@ test_12_detect_state_change_on_error() {
 export RAM_STATE_FILE="$TEST_RAM_FILE"
 source "$SCRIPT_PATH"
 
-# Record an outage (first run)
+# Record previous outage (T-1)
 record_run eth0 "DOWN" "false" "false" "false" "false" -1 -1 -1 100
-# Record recovery (second run)
-record_run eth0 "OK" "true" "true" "true" "true" 2 14 11 0
 
-# Test if recovering state is detected
-if detect_state_change eth0 "OK" "true"; then
+# Test if recovering current state (T0 = OK) triggers change BEFORE record_run
+if detect_state_change eth0 "OK" "true" "false"; then
     echo "change=true"
 else
     echo "change=false"
@@ -497,14 +501,15 @@ test_16_format_pretty() {
 #!/bin/bash
 ip() { echo "2: eth0: inet 192.168.1.100/24 scope global eth0"; return 0; }
 ping() { return 0; }
-dig() { echo ";; Query time: 10 msec"; return 0; }
+dig() { echo ";; status: NOERROR"; echo ";; ANSWER: 1"; echo ";; Query time: 10 msec"; return 0; }
 logger() { return 0; }
 export -f ip ping dig logger
+export TELEMETRY_NO_DEFAULT_LOGS=1 PING_FALLBACK_TARGET=""
 source "$SCRIPT_PATH"
 main --interfaces "eth0" --format pretty
 TESTEOF
     chmod +x /tmp/test_pretty.sh
-
+    
     local out
     out=$(SCRIPT_PATH="$SCRIPT_PATH" bash /tmp/test_pretty.sh 2>&1)
     if echo "$out" | grep -q "INTERNET HEALTH - REAL-TIME STATUS" && echo "$out" | grep -q "DNS Chain Resolution"; then
@@ -523,9 +528,10 @@ test_17_format_log() {
 #!/bin/bash
 ip() { echo "2: eth0: inet 192.168.1.100/24 scope global eth0"; return 0; }
 ping() { return 0; }
-dig() { echo ";; Query time: 10 msec"; return 0; }
+dig() { echo ";; status: NOERROR"; echo ";; ANSWER: 1"; echo ";; Query time: 10 msec"; return 0; }
 logger() { return 0; }
 export -f ip ping dig logger
+export TELEMETRY_NO_DEFAULT_LOGS=1 PING_FALLBACK_TARGET=""
 source "$SCRIPT_PATH"
 main --interfaces "eth0" --format log
 TESTEOF
@@ -551,11 +557,14 @@ ip() { echo "2: eth0: inet 192.168.1.100/24 scope global eth0"; return 0; }
 ping() { return 0; }
 dig() {
     echo "DIG_ARGS: $*" >> /tmp/dig_calls.log
+    echo ";; status: NOERROR"
+    echo ";; ANSWER: 1"
     echo ";; Query time: 10 msec"
     return 0
 }
 logger() { return 0; }
 export -f ip ping dig logger
+export TELEMETRY_NO_DEFAULT_LOGS=1 PING_FALLBACK_TARGET=""
 rm -f /tmp/dig_calls.log
 source "$SCRIPT_PATH"
 main --interfaces "eth0" --pihole-dns "192.168.1.2" --skip-dnscrypt --format pretty
@@ -625,8 +634,10 @@ test_20_flock_concurrency() {
     echo "TEST 20: POSIX flock concurrency protection"
     setup_test_env
 
-    local lock_path="/dev/shm/internet_health_check.lock"
-    [[ ! -d "/dev/shm" ]] && lock_path="/tmp/internet_health_check.lock"
+    local lock_path="/tmp/internet_health_check.lock"
+    if [[ "$(df -PT /tmp 2>/dev/null | awk 'NR==2{print $2}')" != "tmpfs" && -d "/dev/shm" ]]; then
+        lock_path="/dev/shm/internet_health_check.lock"
+    fi
 
     local script_abs
     script_abs=$(realpath "$SCRIPT_PATH" 2>/dev/null || echo "$SCRIPT_PATH")
@@ -660,8 +671,13 @@ test_21_status_json_schema() {
 HOME="$TEST_HOME"
 export HOME
 export RAM_STATE_FILE="$TEST_RAM_FILE"
+export TELEMETRY_NO_DEFAULT_LOGS=1 PING_FALLBACK_TARGET=""
+ip() { echo "2: eth0: inet 192.168.1.100/24 scope global eth0"; return 0; }
+ping() { return 0; }
+dig() { echo ";; status: NOERROR"; echo ";; ANSWER: 1"; echo ";; Query time: 10 msec"; return 0; }
+export -f ip ping dig
 source "$SCRIPT_PATH"
-main --log-file "$TEST_LOG_FILE" --dashboard "$target_json" --format log
+main --interfaces "eth0" --log-file "$TEST_LOG_FILE" --dashboard "$target_json" --format log
 TESTEOF
     chmod +x /tmp/test_json.sh
     SCRIPT_PATH="$SCRIPT_PATH" TEST_HOME="$TEST_HOME" TEST_RAM_FILE="$TEST_RAM_FILE" TEST_LOG_FILE="$TEST_LOG_FILE" bash /tmp/test_json.sh >/dev/null 2>&1
@@ -697,8 +713,13 @@ test_22_reduce_disk_wear_ram_json() {
 HOME="$TEST_HOME"
 export HOME
 export RAM_STATE_FILE="$TEST_RAM_FILE"
+export TELEMETRY_NO_DEFAULT_LOGS=1 PING_FALLBACK_TARGET=""
+ip() { echo "2: eth0: inet 192.168.1.100/24 scope global eth0"; return 0; }
+ping() { return 0; }
+dig() { echo ";; status: NOERROR"; echo ";; ANSWER: 1"; echo ";; Query time: 10 msec"; return 0; }
+export -f ip ping dig
 source "$SCRIPT_PATH"
-main --log-file "$TEST_LOG_FILE" --dashboard "$target_html" --reduce-disk-wear --format log
+main --interfaces "eth0" --log-file "$TEST_LOG_FILE" --dashboard "$target_html" --reduce-disk-wear --format log
 TESTEOF
     chmod +x /tmp/test_disk_wear.sh
     SCRIPT_PATH="$SCRIPT_PATH" TEST_HOME="$TEST_HOME" TEST_RAM_FILE="$TEST_RAM_FILE" TEST_LOG_FILE="$TEST_LOG_FILE" bash /tmp/test_disk_wear.sh >/dev/null 2>&1
@@ -777,8 +798,13 @@ test_24_disk_log_heatmap_danger_on_eth0_down() {
 HOME="$TEST_HOME"
 export HOME
 export RAM_STATE_FILE="$TEST_RAM_FILE"
+export TELEMETRY_NO_DEFAULT_LOGS=1 PING_FALLBACK_TARGET=""
+ip() { echo "2: eth0: inet 192.168.1.100/24 scope global eth0"; return 0; }
+ping() { return 0; }
+dig() { echo ";; status: NOERROR"; echo ";; ANSWER: 1"; echo ";; Query time: 10 msec"; return 0; }
+export -f ip ping dig
 source "$SCRIPT_PATH"
-main --log-file "$TEST_LOG_FILE" --dashboard "$target_json" --format log
+main --interfaces "eth0" --log-file "$TEST_LOG_FILE" --dashboard "$target_json" --format log
 TESTEOF
     chmod +x /tmp/test_heatmap.sh
     SCRIPT_PATH="$SCRIPT_PATH" TEST_HOME="$TEST_HOME" TEST_RAM_FILE="$TEST_RAM_FILE" TEST_LOG_FILE="$TEST_LOG_FILE" bash /tmp/test_heatmap.sh >/dev/null 2>&1
@@ -800,6 +826,375 @@ assert h22['status'] == 'DANGER', f'Expected DANGER for eth0 DOWN, got {h22[\"st
     fi
 
     rm -f /tmp/test_heatmap.sh
+    cleanup_test_env
+}
+
+test_25_latency_degradation_detection() {
+    echo "TEST 25: Latency degradation marks degraded: true and generates Warning status"
+    setup_test_env
+
+    local target_json="$TEST_HOME/status.json"
+    cat > /tmp/test_latency.sh << 'TESTEOF'
+#!/bin/bash
+HOME="$TEST_HOME"
+export HOME
+export RAM_STATE_FILE="$TEST_RAM_FILE"
+
+# Mock ip
+ip() {
+    echo "inet 192.168.1.50/24 scope global eth0"
+}
+
+# Mock ping with 0% loss, 10ms
+ping() {
+    echo "rtt min/avg/max/mdev = 9.0/10.0/11.0/0.5 ms"
+    echo "0% packet loss"
+    return 0
+}
+
+# Mock dig with high Pi-hole latency (180ms >= 150ms threshold)
+dig() {
+    echo ";; status: NOERROR"
+    echo ";; ANSWER: 1"
+    if [[ "$*" =~ "@127.0.0.1" && "$*" =~ "-p 53" ]]; then
+        echo ";; Query time: 180 msec"
+        return 0
+    elif [[ "$*" =~ "@127.0.0.1" && "$*" =~ "-p 5053" ]]; then
+        echo ";; Query time: 20 msec"
+        return 0
+    else
+        echo ";; Query time: 25 msec"
+        return 0
+    fi
+}
+export -f ip ping dig
+export TELEMETRY_NO_DEFAULT_LOGS=1 PING_FALLBACK_TARGET=""
+source "$SCRIPT_PATH"
+main --interfaces eth0 --dashboard "$TEST_HOME/status.json" --format log --log-file "$TEST_LOG_FILE"
+TESTEOF
+    chmod +x /tmp/test_latency.sh
+    SCRIPT_PATH="$SCRIPT_PATH" TEST_HOME="$TEST_HOME" TEST_RAM_FILE="$TEST_RAM_FILE" TEST_LOG_FILE="$TEST_LOG_FILE" bash /tmp/test_latency.sh >/dev/null 2>&1
+
+    if python3 -c "
+import json
+with open('$target_json') as f:
+    d = json.load(f)
+assert d['status'] == 'Degraded', f'Expected Degraded status, got {d[\"status\"]}'
+eth0 = d['interfaces']['eth0']
+assert eth0['degraded'] is True, f'Expected eth0 degraded=True, got {eth0[\"degraded\"]}'
+assert 'High Pi-hole latency' in eth0['degradation_reason'], f'Expected High Pi-hole latency reason, got {eth0[\"degradation_reason\"]}'
+"; then
+        assert_pass "High Pi-hole latency (180ms) triggers Degraded status and degraded=True"
+    else
+        assert_fail "High Pi-hole latency did not trigger Degraded status"
+    fi
+
+    rm -f /tmp/test_latency.sh
+    cleanup_test_env
+}
+
+test_26_apdex_sla_calculation() {
+    echo "TEST 26: Apdex SLA percentage calculation (half-credit for warning/degraded hours)"
+    setup_test_env
+
+    local target_json="$TEST_HOME/status.json"
+    local now_ts
+    now_ts=$(python3 -c "import time; print(int(time.time()))")
+    local prev_ts=$(( now_ts - 3600 ))
+    echo "$prev_ts,eth0,OK,true,true,true,true,250,20,30,0" > "$TEST_RAM_FILE"
+
+    cat > /tmp/test_apdex.sh << 'TESTEOF'
+#!/bin/bash
+HOME="$TEST_HOME"
+export HOME
+export RAM_STATE_FILE="$TEST_RAM_FILE"
+
+ip() { echo "inet 192.168.1.50/24 scope global eth0"; }
+ping() { echo "rtt min/avg/max/mdev = 9.0/10.0/11.0/0.5 ms"; echo "0% packet loss"; return 0; }
+dig() { echo ";; status: NOERROR"; echo ";; ANSWER: 1"; echo ";; Query time: 10 msec"; return 0; }
+export -f ip ping dig
+export TELEMETRY_NO_DEFAULT_LOGS=1 PING_FALLBACK_TARGET=""
+source "$SCRIPT_PATH"
+main --interfaces eth0 --dashboard "$TEST_HOME/status.json" --format log --log-file "$TEST_LOG_FILE"
+TESTEOF
+    chmod +x /tmp/test_apdex.sh
+    SCRIPT_PATH="$SCRIPT_PATH" TEST_HOME="$TEST_HOME" TEST_RAM_FILE="$TEST_RAM_FILE" TEST_LOG_FILE="$TEST_LOG_FILE" bash /tmp/test_apdex.sh >/dev/null 2>&1
+
+    if python3 -c "
+import json
+with open('$target_json') as f:
+    d = json.load(f)
+sla = float(d['sla_percentage'])
+assert sla < 100.0, f'Expected SLA < 100.0 due to degraded hour, got {sla}'
+assert sla > 50.0, f'Expected Apdex SLA with half-credit, got {sla}'
+"; then
+        assert_pass "Apdex SLA gives partial credit for degraded hours"
+    else
+        assert_fail "Apdex SLA calculation failed"
+    fi
+
+    rm -f /tmp/test_apdex.sh
+    cleanup_test_env
+}
+
+test_27_reduce_disk_wear_transition_sequence() {
+    echo "TEST 27: --reduce-disk-wear exact transition sequence (OK->OK->DOWN->DOWN->OK->DEGRADED->OK)"
+    setup_test_env
+
+    cat > /tmp/test_transitions.sh << 'TESTEOF'
+#!/bin/bash
+export HOME="$TEST_HOME"
+export RAM_STATE_FILE="$TEST_RAM_FILE"
+export TELEMETRY_NO_DEFAULT_LOGS=1 PING_FALLBACK_TARGET=""
+ip() { echo "2: eth0: inet 192.168.1.100/24 scope global eth0"; return 0; }
+ping() { (( MOCK_PING == 0 )) && return 0 || return 1; }
+dig() {
+    echo ";; status: NOERROR"
+    echo ";; ANSWER: 1"
+    echo ";; Query time: ${MOCK_LAT:-10} msec"
+    return 0
+}
+export -f ip ping dig
+
+run_step() {
+    MOCK_PING=$1 MOCK_LAT=$2 bash -c 'source "$SCRIPT_PATH"; main --interfaces eth0 --reduce-disk-wear --log-file "$TEST_LOG_FILE" --format log'
+}
+
+run_step 0 10  # 1. OK -> logged
+run_step 0 10  # 2. OK -> suppressed
+run_step 1 10  # 3. DOWN -> logged
+run_step 1 10  # 4. DOWN -> suppressed (no SD card spam!)
+run_step 0 10  # 5. OK (recovery) -> logged immediately
+run_step 0 220 # 6. DEGRADED -> logged
+run_step 0 10  # 7. OK (degradation recovery) -> logged
+TESTEOF
+    chmod +x /tmp/test_transitions.sh
+    SCRIPT_PATH="$SCRIPT_PATH" TEST_HOME="$TEST_HOME" TEST_RAM_FILE="$TEST_RAM_FILE" TEST_LOG_FILE="$TEST_LOG_FILE" bash /tmp/test_transitions.sh >/dev/null 2>&1
+
+    local down_count ok_count deg_count
+    down_count=$(grep -c "\[eth0\] DOWN" "$TEST_LOG_FILE" || true)
+    ok_count=$(grep -c "\[eth0\] OK" "$TEST_LOG_FILE" || true)
+    deg_count=$(grep -c "\[eth0\] DEGRADED" "$TEST_LOG_FILE" || true)
+
+    if (( down_count == 1 && ok_count == 3 && deg_count == 1 )); then
+        assert_pass "--reduce-disk-wear logs exact transitions without spam (OK=3, DOWN=1, DEGRADED=1)"
+    else
+        assert_fail "Unexpected transition log counts (OK=$ok_count, DOWN=$down_count, DEGRADED=$deg_count)"
+    fi
+
+    rm -f /tmp/test_transitions.sh
+    cleanup_test_env
+}
+
+test_28_dns_servfail_refused_rejected() {
+    echo "TEST 28: DNS SERVFAIL and REFUSED responses rejected as failures"
+    setup_test_env
+
+    cat > /tmp/test_servfail.sh << 'TESTEOF'
+#!/bin/bash
+export TELEMETRY_NO_DEFAULT_LOGS=1 PING_FALLBACK_TARGET=""
+ip() { echo "2: eth0: inet 192.168.1.100/24 scope global eth0"; return 0; }
+ping() { return 0; }
+dig() {
+    echo ";; ->>HEADER<<- opcode: QUERY, status: SERVFAIL, id: 1234"
+    echo ";; flags: qr rd ra; QUERY: 1, ANSWER: 0, AUTHORITY: 0, ADDITIONAL: 0"
+    echo ";; Query time: 1 msec"
+    return 0
+}
+export -f ip ping dig
+source "$SCRIPT_PATH"
+main --interfaces eth0 --log-file "$TEST_LOG_FILE" --format log
+TESTEOF
+    chmod +x /tmp/test_servfail.sh
+    SCRIPT_PATH="$SCRIPT_PATH" TEST_HOME="$TEST_HOME" TEST_RAM_FILE="$TEST_RAM_FILE" TEST_LOG_FILE="$TEST_LOG_FILE" bash /tmp/test_servfail.sh >/dev/null 2>&1
+
+    if log_contains "Fail via Pi-hole" && log_contains "\[eth0\] DOWN"; then
+        assert_pass "dig returning SERVFAIL in 1ms is rejected as DNS failure"
+    else
+        assert_fail "SERVFAIL in 1ms falsely passed"
+    fi
+
+    rm -f /tmp/test_servfail.sh
+    cleanup_test_env
+}
+
+test_29_rotate_log_multi_generation() {
+    echo "TEST 29: rotate_log() preserves .1.gz -> .2.gz across rotations"
+    setup_test_env
+    mkdir -p "$(dirname "$TEST_LOG_FILE")"
+    echo "gen1" | gzip -c > "$TEST_LOG_FILE.1.gz"
+    dd if=/dev/zero bs=1024 count=2100 2>/dev/null | tr '\0' 'A' > "$TEST_LOG_FILE"
+
+    cat > /tmp/test_rot_multi.sh << 'TESTEOF'
+#!/bin/bash
+source "$SCRIPT_PATH"
+LOG_TO_FILE=true
+LOG_FILE="$TEST_LOG_FILE"
+rotate_log
+TESTEOF
+    chmod +x /tmp/test_rot_multi.sh
+    SCRIPT_PATH="$SCRIPT_PATH" TEST_LOG_FILE="$TEST_LOG_FILE" bash /tmp/test_rot_multi.sh >/dev/null 2>&1
+
+    if [[ -f "$TEST_LOG_FILE.1.gz" && -f "$TEST_LOG_FILE.2.gz" ]]; then
+        assert_pass "rotate_log shifts .1.gz to .2.gz without clobbering history"
+    else
+        assert_fail "rotate_log missing .1.gz or .2.gz"
+    fi
+
+    rm -f /tmp/test_rot_multi.sh
+    cleanup_test_env
+}
+
+test_30_macos_float_loss_and_unused_nic() {
+    echo "TEST 30: Float packet loss parsing and admin-down unused NIC exclusion"
+    setup_test_env
+
+    # Setup mock sysfs where eth0 is UP and wlan0 is administratively DOWN (flags=0x1002)
+    local mock_sysfs="$TEST_HOME/sys_net"
+    mkdir -p "$mock_sysfs/eth0" "$mock_sysfs/wlan0"
+    echo "0x1003" > "$mock_sysfs/eth0/flags"
+    echo "1" > "$mock_sysfs/eth0/carrier"
+    echo "up" > "$mock_sysfs/eth0/operstate"
+    echo "0x1002" > "$mock_sysfs/wlan0/flags"
+    echo "down" > "$mock_sysfs/wlan0/operstate"
+
+    local target_json="$TEST_HOME/status.json"
+    cat > /tmp/test_unused_float.sh << 'TESTEOF'
+#!/bin/bash
+export HOME="$TEST_HOME" RAM_STATE_FILE="$TEST_RAM_FILE" NET_SYSFS_ROOT="$MOCK_SYSFS"
+export TELEMETRY_NO_DEFAULT_LOGS=1 PING_FALLBACK_TARGET=""
+ip() {
+    if [[ "$*" =~ "eth0" ]]; then
+        echo "    inet 192.168.1.204/24 scope global eth0"
+    fi
+    return 0
+}
+ping() {
+    # Emit decimal float packet loss format
+    echo "round-trip min/avg/max/stddev = 10.0/12.0/14.0/1.0 ms"
+    echo "25.0% packet loss"
+    return 0
+}
+dig() { echo ";; status: NOERROR"; echo ";; ANSWER: 1"; echo ";; Query time: 5 msec"; return 0; }
+export -f ip ping dig
+source "$SCRIPT_PATH"
+main --interfaces "eth0,wlan0" --dashboard "$TEST_HOME/status.json" --log-file "$TEST_LOG_FILE" --format log
+TESTEOF
+    chmod +x /tmp/test_unused_float.sh
+    SCRIPT_PATH="$SCRIPT_PATH" TEST_HOME="$TEST_HOME" TEST_RAM_FILE="$TEST_RAM_FILE" TEST_LOG_FILE="$TEST_LOG_FILE" MOCK_SYSFS="$mock_sysfs" bash /tmp/test_unused_float.sh >/dev/null 2>&1
+
+    if python3 -c "
+import json
+with open('$target_json') as f:
+    d = json.load(f)
+eth0 = d['interfaces']['eth0']
+wlan0 = d['interfaces']['wlan0']
+assert eth0['packet_loss'] == 25.0, f'Expected float loss 25.0, got {eth0[\"packet_loss\"]}'
+assert eth0['degraded'] is True, 'Expected eth0 degraded on 25% loss'
+assert wlan0['state'] == 'unused' and wlan0['admin_up'] is False, f'Expected wlan0 unused, got {wlan0}'
+"; then
+        assert_pass "Float packet loss 25.0% detected and admin-down wlan0 excluded as unused"
+    else
+        assert_fail "Float loss or admin-down unused classification failed"
+    fi
+
+    rm -f /tmp/test_unused_float.sh
+    cleanup_test_env
+}
+
+test_31_global_bleed_and_cache_bust() {
+    echo "TEST 31: No global degradation bleed across interfaces and --bust-dns-cache nonce"
+    setup_test_env
+
+    local target_json="$TEST_HOME/status.json"
+    local mock_sysfs="$TEST_HOME/sys_net"
+    mkdir -p "$mock_sysfs/eth0" "$mock_sysfs/wlan0"
+    echo "0x1003" > "$mock_sysfs/eth0/flags"
+    echo "1" > "$mock_sysfs/eth0/carrier"
+    echo "0x1003" > "$mock_sysfs/wlan0/flags"
+    echo "0" > "$mock_sysfs/wlan0/carrier"
+
+    rm -f /tmp/dig_bust.log
+    cat > /tmp/test_bleed_bust.sh << 'TESTEOF'
+#!/bin/bash
+export HOME="$TEST_HOME" RAM_STATE_FILE="$TEST_RAM_FILE" NET_SYSFS_ROOT="$MOCK_SYSFS"
+export TELEMETRY_NO_DEFAULT_LOGS=1 PING_FALLBACK_TARGET=""
+ip() {
+    [[ "$*" =~ "eth0" ]] && echo "    inet 192.168.1.50/24 scope global eth0"
+    return 0
+}
+ping() { echo "rtt min/avg/max/mdev = 9/10/11/1 ms"; echo "0% packet loss"; return 0; }
+dig() {
+    echo "$*" >> /tmp/dig_bust.log
+    echo ";; status: NXDOMAIN"
+    echo ";; flags: qr rd ra; QUERY: 1, ANSWER: 0, AUTHORITY: 1, ADDITIONAL: 0"
+    echo ";; Query time: 25 msec"
+    if [[ "$*" =~ "@127.0.0.1" && "$*" =~ "-p 53" ]]; then
+        :
+    fi
+    return 0
+}
+export -f ip ping dig
+export PIHOLE_LATENCY_WARN_MS=10
+source "$SCRIPT_PATH"
+main --interfaces "eth0,wlan0" --bust-dns-cache --dashboard "$TEST_HOME/status.json" --log-file "$TEST_LOG_FILE" --format log
+TESTEOF
+    chmod +x /tmp/test_bleed_bust.sh
+    SCRIPT_PATH="$SCRIPT_PATH" TEST_HOME="$TEST_HOME" TEST_RAM_FILE="$TEST_RAM_FILE" TEST_LOG_FILE="$TEST_LOG_FILE" MOCK_SYSFS="$mock_sysfs" bash /tmp/test_bleed_bust.sh >/dev/null 2>&1
+
+    if grep -q "hc-.*\.cloudflare\.com" /tmp/dig_bust.log && python3 -c "
+import json
+with open('$target_json') as f:
+    d = json.load(f)
+assert d['metadata']['cache_busted'] is True
+assert d['interfaces']['eth0']['degraded'] is True
+assert d['interfaces']['wlan0']['degraded'] is False, f'Degradation leaked to wlan0: {d[\"interfaces\"][\"wlan0\"]}'
+assert d['interfaces']['wlan0']['client_ok'] is False
+assert d['interfaces']['wlan0']['pihole'] is None
+"; then
+        assert_pass "--bust-dns-cache queries nonce cleanly and down wlan0 avoids bleed or false DNS blame"
+    else
+        assert_fail "Cache-busting or global reset check failed"
+    fi
+
+    rm -f /tmp/test_bleed_bust.sh /tmp/dig_bust.log
+    cleanup_test_env
+}
+
+test_32_hourly_disk_heartbeat() {
+    echo "TEST 32: Hourly OK disk heartbeat in reduce-disk-wear mode"
+    setup_test_env
+
+    local log_f="$TEST_LOG_FILE"
+    local cur_hr prev_hr
+    cur_hr=$(date '+%Y-%m-%d %H')
+    prev_hr="2020-01-01 00"
+
+    cat > /tmp/test_heartbeat.sh << TESTEOF
+#!/bin/bash
+set -e
+source "$SCRIPT_PATH"
+LOG_FILE="$log_f"
+LOG_TO_FILE=true
+
+printf '%s:05:00 [INTERNET-HEALTH-CHECK] [eth0] OK\n' "$prev_hr" > "\$LOG_FILE"
+should_log_hourly_heartbeat "eth0" || { echo "Expected 0 when only prior hour exists"; exit 1; }
+
+printf '%s:05:00 [INTERNET-HEALTH-CHECK] [eth0] OK\n' "$cur_hr" >> "\$LOG_FILE"
+if should_log_hourly_heartbeat "eth0"; then
+    echo "Expected 1 after current hour eth0 entry written"; exit 1
+fi
+
+should_log_hourly_heartbeat "wlan0" || { echo "Expected 0 for wlan0 when only eth0 logged in current hour"; exit 1; }
+TESTEOF
+    chmod +x /tmp/test_heartbeat.sh
+    if SCRIPT_PATH="$SCRIPT_PATH" bash /tmp/test_heartbeat.sh; then
+        assert_pass "should_log_hourly_heartbeat deduplicates within current hour per interface"
+    else
+        assert_fail "should_log_hourly_heartbeat check failed"
+    fi
+
+    rm -f /tmp/test_heartbeat.sh
     cleanup_test_env
 }
 
@@ -933,6 +1328,22 @@ main() {
     test_23_cli_flags
     echo ""
     test_24_disk_log_heatmap_danger_on_eth0_down
+    echo ""
+    test_25_latency_degradation_detection
+    echo ""
+    test_26_apdex_sla_calculation
+    echo ""
+    test_27_reduce_disk_wear_transition_sequence
+    echo ""
+    test_28_dns_servfail_refused_rejected
+    echo ""
+    test_29_rotate_log_multi_generation
+    echo ""
+    test_30_macos_float_loss_and_unused_nic
+    echo ""
+    test_31_global_bleed_and_cache_bust
+    echo ""
+    test_32_hourly_disk_heartbeat
     
     echo ""
     echo "=========================================="
