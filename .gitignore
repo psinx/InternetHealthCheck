@@ -19,3 +19,5 @@ scratch/
 .codex/
 backups/
 *.tar.gz
+*.png
+dashboard/
