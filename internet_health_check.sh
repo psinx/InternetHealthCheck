@@ -277,7 +277,8 @@ main() {
     fi
 
     local detected_upstream
-    detected_upstream=$(detect_upstream_dns "$UPSTREAM_DNS" "$UPSTREAM_SECONDARY_DNS")
+    detect_upstream_dns "$UPSTREAM_DNS" "$UPSTREAM_SECONDARY_DNS" >/dev/null
+    detected_upstream="$UPSTREAM_PRIMARY_IP"
     local detected_secondary="${UPSTREAM_SECONDARY_IP:-}"
 
     if [[ "$OUTPUT_FORMAT" == "pretty" ]]; then

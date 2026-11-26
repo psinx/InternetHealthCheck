@@ -448,7 +448,8 @@ check_dns_chain() {
     local bust_cache="${BUST_DNS_CACHE:-false}"
 
     local upstream_ip
-    upstream_ip=$(detect_upstream_dns "${UPSTREAM_DNS:-}" "${UPSTREAM_SECONDARY_DNS:-}")
+    detect_upstream_dns "${UPSTREAM_DNS:-}" "${UPSTREAM_SECONDARY_DNS:-}" >/dev/null
+    upstream_ip="$UPSTREAM_PRIMARY_IP"
     local secondary_ip="${UPSTREAM_SECONDARY_IP:-}"
 
     # 1. Pi-hole Check
