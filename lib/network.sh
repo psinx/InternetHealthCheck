@@ -150,16 +150,41 @@ check_dns() {
     local timeout="${DNS_TIMEOUT:-3}"
     local tries="${DNS_TRIES:-2}"
 
-    local dig_out
-    # Query with configurable timeout and retries (default: 3s timeout, 2 tries)
-    dig_out=$(dig +time="$timeout" +tries="$tries" "$DNS_TEST_DOMAIN" "@$server" -p "$port" -b "$local_ip" 2>&1)
-    local exit_status=$?
-    
-    if (( exit_status == 0 )) && echo "$dig_out" | grep -q 'Query time:'; then
-        local query_time
-        query_time=$(echo "$dig_out" | grep -oE 'Query time: [0-9]+' | awk '{print $3}')
-        DNS_LATENCY=${query_time:-0}
-        DNS_SUCCESS=true
+    if command -v dig >/dev/null 2>&1; then
+        local dig_out
+        # Query with configurable timeout and retries (default: 3s timeout, 2 tries)
+        dig_out=$(dig +time="$timeout" +tries="$tries" "$DNS_TEST_DOMAIN" "@$server" -p "$port" -b "$local_ip" 2>&1)
+        local exit_status=$?
+        
+        if (( exit_status == 0 )) && echo "$dig_out" | grep -q 'Query time:'; then
+            local query_time
+            query_time=$(echo "$dig_out" | grep -oE 'Query time: [0-9]+' | awk '{print $3}')
+            DNS_LATENCY=${query_time:-0}
+            DNS_SUCCESS=true
+        fi
+    elif command -v python3 >/dev/null 2>&1; then
+        # Pure Python fallback for client machines without bind9-dnsutils/dig
+        local py_lat
+        py_lat=$(python3 -c "
+import socket, time, sys
+try:
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.settimeout(float('$timeout'))
+    if '$local_ip':
+        s.bind(('$local_ip', 0))
+    query = b'\xaa\xbb\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00\ncloudflare\x03com\x00\x00\x01\x00\x01'
+    t0 = time.perf_counter()
+    s.sendto(query, ('$server', int('$port')))
+    data, _ = s.recvfrom(512)
+    lat = int((time.perf_counter() - t0) * 1000)
+    print(lat)
+except Exception:
+    sys.exit(1)
+" 2>/dev/null)
+        if [[ $? -eq 0 && -n "$py_lat" ]]; then
+            DNS_LATENCY="$py_lat"
+            DNS_SUCCESS=true
+        fi
     fi
 }
 
