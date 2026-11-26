@@ -152,7 +152,7 @@
         return 'Suggested check: Inspect logs for packet loss, Wi-Fi interference, or link flaps.';
     }
 
-    function renderMiniChainHtml(hourData, dayLabel, timeRange) {
+    function renderMiniChainHtml(hourData, dayLabel, timeRange, isResolved) {
         const safeDay = escapeHTML(dayLabel);
         const safeTime = escapeHTML(timeRange);
 
@@ -229,7 +229,8 @@
             } else if (hasRecovered && hourData.recovered_at) {
                 html += '<div style="font-size: 11px; color: #2ecc71; margin-top: 2px;">Recovered at <strong>' + escapeHTML(hourData.recovered_at) + '</strong></div>';
             }
-            const fixHint = getTooltipFixHint(hourData);
+            const resolved = Boolean(isResolved || hasRecovered);
+            const fixHint = !resolved ? getTooltipFixHint(hourData) : '';
             if (fixHint) {
                 html += '<div style="font-size: 11px; color: #f7dc6f; margin-top: 4px; border-top: 1px dashed #4b646f; padding-top: 4px; white-space: normal;"><i class="fa fa-wrench"></i> ' + escapeHTML(fixHint) + '</div>';
             }
@@ -241,15 +242,15 @@
         return html;
     }
 
-    function showTooltipForCell(cell, hourData, dayLabel, timeRange) {
+    function showTooltipForCell(cell, hourData, dayLabel, timeRange, isResolved) {
         const tip = getOrCreateTooltip();
-        tip.innerHTML = renderMiniChainHtml(hourData, dayLabel, timeRange);
+        tip.innerHTML = renderMiniChainHtml(hourData, dayLabel, timeRange, isResolved);
         tip.style.display = 'block';
         tip.style.opacity = '1';
         positionTooltipForCell(cell);
     }
 
-    function attachTooltipEvents(cell, hourData, dayLabel, timeRange) {
+    function attachTooltipEvents(cell, hourData, dayLabel, timeRange, isResolved) {
         const recoveredLabel = hourData.has_recovered ? ', recovered at ' + (hourData.recovered_at || 'hour end') : '';
         cell.setAttribute('tabindex', '0');
         cell.setAttribute('role', 'button');
@@ -257,7 +258,7 @@
 
         cell.addEventListener('mouseenter', function() {
             pinnedCell = null;
-            showTooltipForCell(cell, hourData, dayLabel, timeRange);
+            showTooltipForCell(cell, hourData, dayLabel, timeRange, isResolved);
         });
 
         cell.addEventListener('mouseleave', function() {
@@ -267,7 +268,7 @@
         });
 
         cell.addEventListener('focus', function() {
-            showTooltipForCell(cell, hourData, dayLabel, timeRange);
+            showTooltipForCell(cell, hourData, dayLabel, timeRange, isResolved);
         });
 
         cell.addEventListener('blur', function() {
@@ -282,7 +283,7 @@
                 hideTooltip();
             } else {
                 pinnedCell = cell;
-                showTooltipForCell(cell, hourData, dayLabel, timeRange);
+                showTooltipForCell(cell, hourData, dayLabel, timeRange, isResolved);
             }
         });
     }
@@ -798,6 +799,25 @@
         const containerIds = { 'Today': 'row-today', 'Yesterday': 'row-yesterday', '2 Days Ago': 'row-2daysago' };
         const labelIds = { 'Today': 'label-today', 'Yesterday': 'label-yesterday', '2 Days Ago': 'label-2daysago' };
 
+        const dayOrder = ['2 Days Ago', 'Yesterday', 'Today'];
+        const chronologicalCells = [];
+        dayOrder.forEach(label => {
+            const row = history.find(r => r.label === label);
+            if (row && Array.isArray(row.hours)) {
+                row.hours.forEach(h => chronologicalCells.push(h));
+            }
+        });
+        let resolvedAfter = Boolean(lastDashboardData && lastDashboardData.status === 'Healthy');
+        const resolvedMap = new WeakMap();
+        for (let i = chronologicalCells.length - 1; i >= 0; i--) {
+            const h = chronologicalCells[i];
+            const isCellResolved = Boolean(h.has_recovered) || resolvedAfter;
+            resolvedMap.set(h, isCellResolved);
+            if (h.status === 'OK' || h.has_recovered) {
+                resolvedAfter = true;
+            }
+        }
+
         history.forEach(row => {
             const containerId = containerIds[row.label];
             const labelId = labelIds[row.label];
@@ -830,7 +850,7 @@
                 cell.className = cellClass;
 
                 const timeRange = formatHourRange(hourData.hour);
-                attachTooltipEvents(cell, hourData, dateText, timeRange);
+                attachTooltipEvents(cell, hourData, dateText, timeRange, resolvedMap.get(hourData) === true);
                 container.appendChild(cell);
             });
         });
