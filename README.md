@@ -105,6 +105,31 @@ cd InternetHealthCheck
 ./internet_health_check.sh --pihole-dns 192.168.1.2 --skip-dnscrypt
 ```
 
+### LAN Canary Probe (Optional)
+
+Run a secondary Linux/Raspberry Pi host as an independent LAN vantage point pushing to the primary Pi-hole dashboard:
+
+1. **Generate a dedicated key on the canary host:**
+   ```bash
+   ssh-keygen -t ed25519 -N "" -f ~/.ssh/id_ed25519_canary
+   ```
+
+2. **Authorize forced-command writes & expose `canary_status.json` on the Pi-hole host:**
+   Add the canary public key to `~/.ssh/authorized_keys` on the Pi-hole host with a restricted command:
+   ```text
+   command="cat > /tmp/canary_status.json.tmp && chmod 644 /tmp/canary_status.json.tmp && mv -f /tmp/canary_status.json.tmp /tmp/canary_status.json",no-port-forwarding,no-X11-forwarding,no-agent-forwarding,no-pty <CANARY_PUBKEY>
+   ```
+   Then expose it in the web root:
+   ```bash
+   ln -sf /tmp/canary_status.json /var/www/html/canary_status.json
+   ```
+
+3. **Configure canary cron jobs on the secondary host (`crontab -e`):**
+   ```bash
+   */5 * * * * /path/to/InternetHealthCheck/internet_health_check.sh --log-file /path/to/InternetHealthCheck/logs/health.log --reduce-disk-wear --dashboard /path/to/InternetHealthCheck/dashboard/index.html --pihole-dns 192.168.1.2 --skip-dnscrypt --bust-dns-cache --syslog --canary-push-target <user>@192.168.1.2 --canary-ssh-key ~/.ssh/id_ed25519_canary >/dev/null 2>&1
+   @reboot sleep 35 && /path/to/InternetHealthCheck/internet_health_check.sh --log-file /path/to/InternetHealthCheck/logs/health.log --reduce-disk-wear --dashboard /path/to/InternetHealthCheck/dashboard/index.html --pihole-dns 192.168.1.2 --skip-dnscrypt --bust-dns-cache --syslog --canary-push-target <user>@192.168.1.2 --canary-ssh-key ~/.ssh/id_ed25519_canary >/dev/null 2>&1
+   ```
+
 ---
 
 ## CLI Options
@@ -127,6 +152,16 @@ cd InternetHealthCheck
 | `--canary-ssh-key` | `PATH` | SSH private key path for `--canary-push-target` |
 | `--format` | `pretty\|log` | Output format: `pretty` (visual checklist) or `log` (timestamped syslog) |
 | `-h`, `--help` | None | Display help message |
+
+### Environment Variables
+
+| Variable | Default | Description |
+|---|---|---|
+| `PIHOLE_LATENCY_WARN_MS` | `150` | Latency threshold (ms) before flagging Hop 1 (Pi-hole) as degraded |
+| `DNSCRYPT_LATENCY_WARN_MS` | `200` | Latency threshold (ms) before flagging Hop 2 (`dnscrypt-proxy`) as degraded |
+| `UPSTREAM_LATENCY_WARN_MS` | `200` | Latency threshold (ms) before flagging Upstream DNS as degraded |
+| `PACKET_LOSS_WARN_PCT` | `5` | ICMP packet loss percentage threshold before flagging WAN link as degraded |
+| `DEFAULT_RAM_DIR` | Auto (`/tmp` if `tmpfs`, else `/dev/shm`) | Directory used for RAM state buffer, flock lockfile, and `status.json` in `--reduce-disk-wear` mode |
 
 ---
 
