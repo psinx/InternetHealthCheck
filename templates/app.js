@@ -628,7 +628,7 @@
         // 5. Stale telemetry or LAN Canary split-brain disagreement
         if (lastDataTimestamp && formatRelativeAge(lastDataTimestamp).stale) {
             bump('warning');
-            items.push('<strong>Telemetry Stale (&gt;15m):</strong> Cron check may have stopped. Verify <code>crontab -l</code> and lock file in <code>/dev/shm/</code>.');
+            items.push('<strong>Telemetry Stale (&gt;15m):</strong> Cron check may have stopped. Verify <code>crontab -l</code> and lock file in <code>/tmp/</code> or <code>/dev/shm/</code>.');
         }
         if (canaryData && canaryData.status && canaryData.status !== 'Healthy' && data && data.status === 'Healthy') {
             bump('warning');

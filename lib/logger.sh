@@ -2,8 +2,15 @@
 
 # lib/logger.sh - Logging, state database, log rotation, and alerting
 
-DEFAULT_RAM_DIR="/dev/shm"
-[[ ! -d "/dev/shm" ]] && DEFAULT_RAM_DIR="/tmp"
+if [[ -z "${DEFAULT_RAM_DIR:-}" ]]; then
+    if [[ -d "/tmp" && "$(df -PT /tmp 2>/dev/null | awk 'NR==2{print $2}')" == "tmpfs" ]]; then
+        DEFAULT_RAM_DIR="/tmp"
+    elif [[ -d "/dev/shm" ]]; then
+        DEFAULT_RAM_DIR="/dev/shm"
+    else
+        DEFAULT_RAM_DIR="/tmp"
+    fi
+fi
 RAM_STATE_FILE="${RAM_STATE_FILE:-${DEFAULT_RAM_DIR}/internet_health_history.txt}"
 readonly RAM_STATE_FILE
 readonly MAX_RAM_LINES=17280 # 30 days of 5-minute runs across 2 interfaces (30 * 24 * 12 * 2)

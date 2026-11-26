@@ -38,8 +38,15 @@ CANARY_PUSH_TARGET="${CANARY_PUSH_TARGET:-}"
 CANARY_SSH_KEY="${CANARY_SSH_KEY:-}"
 TAG="[INTERNET-HEALTH-CHECK]"
 
-DEFAULT_RAM_DIR="/dev/shm"
-[[ ! -d "/dev/shm" ]] && DEFAULT_RAM_DIR="/tmp"
+if [[ -z "${DEFAULT_RAM_DIR:-}" ]]; then
+    if [[ -d "/tmp" && "$(df -PT /tmp 2>/dev/null | awk 'NR==2{print $2}')" == "tmpfs" ]]; then
+        DEFAULT_RAM_DIR="/tmp"
+    elif [[ -d "/dev/shm" ]]; then
+        DEFAULT_RAM_DIR="/dev/shm"
+    else
+        DEFAULT_RAM_DIR="/tmp"
+    fi
+fi
 export RAM_STATE_FILE="${RAM_STATE_FILE:-${DEFAULT_RAM_DIR}/internet_health_history.txt}"
 
 export SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

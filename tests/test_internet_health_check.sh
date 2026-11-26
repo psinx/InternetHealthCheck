@@ -634,8 +634,10 @@ test_20_flock_concurrency() {
     echo "TEST 20: POSIX flock concurrency protection"
     setup_test_env
 
-    local lock_path="/dev/shm/internet_health_check.lock"
-    [[ ! -d "/dev/shm" ]] && lock_path="/tmp/internet_health_check.lock"
+    local lock_path="/tmp/internet_health_check.lock"
+    if [[ "$(df -PT /tmp 2>/dev/null | awk 'NR==2{print $2}')" != "tmpfs" && -d "/dev/shm" ]]; then
+        lock_path="/dev/shm/internet_health_check.lock"
+    fi
 
     local script_abs
     script_abs=$(realpath "$SCRIPT_PATH" 2>/dev/null || echo "$SCRIPT_PATH")
