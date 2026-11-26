@@ -226,3 +226,24 @@ def test_current_hour_metadata(tmp_path):
     assert h15["elapsed_minutes"] == 22
     assert h14["is_current"] is False
     assert y15["is_current"] is False
+
+
+def test_disk_hourly_heartbeat_survives_ram_wipe(tmp_path):
+    now_dt = datetime(2026, 4, 20, 15, 10, 0)
+    ram = tmp_path / "ram_empty.csv"
+    log_file = tmp_path / "hc.log"
+    log_file.write_text(
+        "\n".join([
+            "2026-04-20 12:00:05 [INTERNET-HEALTH-CHECK] [eth0] OK",
+            "2026-04-20 13:00:05 [INTERNET-HEALTH-CHECK] [eth0] OK",
+            "2026-04-20 14:00:05 [INTERNET-HEALTH-CHECK] [eth0] OK",
+        ]) + "\n"
+    )
+
+    payload = telemetry.build_telemetry_payload(
+        make_live({"en0": healthy_iface()}), str(ram), str(log_file), now_dt=now_dt
+    )
+    today = payload["history"][2]["hours"]
+    for hr in (12, 13, 14):
+        assert today[hr]["status"] == "OK"
+    assert payload["sla_percentage"] == 100.0

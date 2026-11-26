@@ -62,7 +62,7 @@ Usage: $0 [OPTIONS]
 Options:
   --log-file FILE             Write logs to FILE instead of stdout
   --reduce-disk-wear          Reduce log writes: store 30-day logs in RAM (${DEFAULT_RAM_DIR}/),
-                              only write state changes/outages to disk log.
+                              only write state changes/outages and hourly OK heartbeats to disk log.
   --format FORMAT             Output format: 'pretty' (visual checklist) or 'log' (syslog style).
                               Defaults to 'pretty' in interactive terminals, 'log' when piped/cron.
   --dashboard FILE            Deploy the Pi-hole v6 style web dashboard (index.html, app.js) at FILE
@@ -412,6 +412,8 @@ main() {
                 else
                     log "[$iface] $status_word"
                 fi
+            elif [[ "$status_word" == "OK" ]] && should_log_hourly_heartbeat "$iface"; then
+                log "[$iface] OK"
             fi
 
             if (( changed == 0 )); then

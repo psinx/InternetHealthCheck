@@ -152,6 +152,21 @@ detect_state_change() {
     return 1
 }
 
+# Return 0 if --reduce-disk-wear should write an hourly OK heartbeat to disk for this interface
+should_log_hourly_heartbeat() {
+    local interface=$1
+    [[ "$LOG_TO_FILE" != "true" || -z "$LOG_FILE" ]] && return 1
+    [[ ! -f "$LOG_FILE" ]] && return 0
+
+    local current_hour_prefix
+    current_hour_prefix=$(date '+%Y-%m-%d %H')
+
+    if tail -n 50 "$LOG_FILE" 2>/dev/null | grep -F "${current_hour_prefix}:" | grep -qF "[$interface]"; then
+        return 1
+    fi
+    return 0
+}
+
 # Log rotation for disk logs (preserves .1.gz, .2.gz, ... up to MAX_ROTATIONS)
 rotate_log() {
     [[ "$LOG_TO_FILE" != "true" || -z "$LOG_FILE" || ! -f "$LOG_FILE" ]] && return

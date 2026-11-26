@@ -1161,6 +1161,43 @@ assert d['interfaces']['wlan0']['pihole'] is None
     cleanup_test_env
 }
 
+test_32_hourly_disk_heartbeat() {
+    echo "TEST 32: Hourly OK disk heartbeat in reduce-disk-wear mode"
+    setup_test_env
+
+    local log_f="$TEST_LOG_FILE"
+    local cur_hr prev_hr
+    cur_hr=$(date '+%Y-%m-%d %H')
+    prev_hr="2020-01-01 00"
+
+    cat > /tmp/test_heartbeat.sh << TESTEOF
+#!/bin/bash
+set -e
+source "$SCRIPT_PATH"
+LOG_FILE="$log_f"
+LOG_TO_FILE=true
+
+printf '%s:05:00 [INTERNET-HEALTH-CHECK] [eth0] OK\n' "$prev_hr" > "\$LOG_FILE"
+should_log_hourly_heartbeat "eth0" || { echo "Expected 0 when only prior hour exists"; exit 1; }
+
+printf '%s:05:00 [INTERNET-HEALTH-CHECK] [eth0] OK\n' "$cur_hr" >> "\$LOG_FILE"
+if should_log_hourly_heartbeat "eth0"; then
+    echo "Expected 1 after current hour eth0 entry written"; exit 1
+fi
+
+should_log_hourly_heartbeat "wlan0" || { echo "Expected 0 for wlan0 when only eth0 logged in current hour"; exit 1; }
+TESTEOF
+    chmod +x /tmp/test_heartbeat.sh
+    if SCRIPT_PATH="$SCRIPT_PATH" bash /tmp/test_heartbeat.sh; then
+        assert_pass "should_log_hourly_heartbeat deduplicates within current hour per interface"
+    else
+        assert_fail "should_log_hourly_heartbeat check failed"
+    fi
+
+    rm -f /tmp/test_heartbeat.sh
+    cleanup_test_env
+}
+
 #=============================================================================
 # Main
 #=============================================================================
@@ -1305,6 +1342,8 @@ main() {
     test_30_macos_float_loss_and_unused_nic
     echo ""
     test_31_global_bleed_and_cache_bust
+    echo ""
+    test_32_hourly_disk_heartbeat
     
     echo ""
     echo "=========================================="
