@@ -113,7 +113,11 @@
         .chain-node.node-warning { border-color: #f39c12; }
         .chain-node.node-fail { border-color: #dd4b39; }
         .node-name { font-weight: bold; font-size: 1.08em; }
-        .node-status-desc { font-size: 0.85em; opacity: 0.85; font-family: monospace; margin-top: 5px; word-break: break-word; line-height: 1.35; width: 100%; }
+        .node-status-desc { font-size: 0.85em; opacity: 0.88; font-family: monospace; margin-top: 5px; line-height: 1.35; width: 100%; }
+        .node-target { display: block; font-size: 0.9em; opacity: 0.85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .node-result { display: block; margin-top: 4px; font-weight: 700; font-size: 0.95em; white-space: nowrap; }
+        .remediation-list { margin: 6px 0 0 0; padding-left: 18px; font-size: 0.92em; line-height: 1.45; }
+        .remediation-list code { background: rgba(0,0,0,0.2); color: inherit; padding: 1px 4px; border-radius: 3px; }
         .client-iface-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 2px 4px; font-size: 0.95em; text-align: left; }
         .client-iface-muted { opacity: 0.65; }
         .connector-arrow {
@@ -366,6 +370,10 @@
                             <div id="node-cloudflare-desc" class="node-status-desc">Pending</div>
                         </div>
                     </div>
+                    <div id="remediation-callout" class="callout callout-warning" style="display: none; margin: 12px 0 0 0;">
+                        <h4 id="remediation-title" style="margin: 0 0 4px 0; font-size: 1em; font-weight: 700;"><i class="fa fa-wrench"></i> Recommended Actions</h4>
+                        <ul id="remediation-list" class="remediation-list"></ul>
+                    </div>
                 </div>
                 <div id="canary-status-footer" class="box-footer" style="display: none;">
                     <div class="canary-strip" id="canary-strip-content"></div>
@@ -443,6 +451,6 @@
 
 <script src="/admin/vendor/jquery/jquery.min.js"></script>
 <script src="/admin/vendor/adminLTE/adminlte.min.js"></script>
-<script src="/app.js?v=3.2"></script>
+<script src="/app.js?v=3.3"></script>
 </body>
 </html>

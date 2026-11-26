@@ -47,6 +47,8 @@
 
     let lastDataTimestamp = null;
     let currentMetadata = {};
+    let lastDashboardData = null;
+    let lastCanaryData = null;
 
     function updateFreshnessTicker() {
         const el = document.getElementById('header-last-updated');
@@ -58,6 +60,9 @@
         } else {
             el.className = 'text-muted';
             el.textContent = 'Updated: ' + age.text;
+        }
+        if (lastDashboardData) {
+            renderRemediationGuide(lastDashboardData, lastCanaryData);
         }
     }
 
@@ -118,6 +123,33 @@
             return '<span style="color: #f39c12; font-weight: bold;">' + escapeHTML(label) + ' (SLOW)</span>';
         }
         return '<span style="color: #2ecc71; font-weight: bold;">' + escapeHTML(label) + ' (OK)</span>';
+    }
+
+    function getTooltipFixHint(hourData) {
+        if (!hourData || hourData.status === 'OK' || hourData.status === 'INACTIVE') return '';
+        const slowSet = new Set(Array.isArray(hourData.slow_hops) ? hourData.slow_hops : []);
+        if (hourData.client_ok === false) {
+            return 'Suggested check: Inspect Ethernet cable / switch link or router DHCP lease.';
+        }
+        if (hourData.pihole === false) {
+            return 'Suggested check: Run systemctl status pihole-FTL or inspect /var/log/pihole/FTL.log.';
+        }
+        if (!currentMetadata.skip_dnscrypt && hourData.dnscrypt === false) {
+            return 'Suggested check: Restart dnscrypt-proxy & check DoH logs via journalctl -u dnscrypt-proxy.';
+        }
+        if (hourData.cloudflare === false) {
+            return 'Suggested check: Verify ISP WAN link, modem status, and outbound port 53/443.';
+        }
+        if (slowSet.has('pihole')) {
+            return 'Suggested check: Review Pi-hole Query Log for client floods, DB size, or SD card I/O wait.';
+        }
+        if (slowSet.has('dnscrypt')) {
+            return 'Suggested check: Check dnscrypt-proxy DoH resolver latency in dnscrypt-proxy.toml.';
+        }
+        if (slowSet.has('cloudflare')) {
+            return 'Suggested check: Inspect ISP / WAN congestion or upstream resolver response times.';
+        }
+        return 'Suggested check: Inspect logs for packet loss, Wi-Fi interference, or link flaps.';
     }
 
     function renderMiniChainHtml(hourData, dayLabel, timeRange) {
@@ -196,6 +228,10 @@
                 html += '<div style="font-size: 11px; color: #e1e8eb; margin-top: 2px;">' + timeline + '</div>';
             } else if (hasRecovered && hourData.recovered_at) {
                 html += '<div style="font-size: 11px; color: #2ecc71; margin-top: 2px;">Recovered at <strong>' + escapeHTML(hourData.recovered_at) + '</strong></div>';
+            }
+            const fixHint = getTooltipFixHint(hourData);
+            if (fixHint) {
+                html += '<div style="font-size: 11px; color: #f7dc6f; margin-top: 4px; border-top: 1px dashed #4b646f; padding-top: 4px; white-space: normal;"><i class="fa fa-wrench"></i> ' + escapeHTML(fixHint) + '</div>';
             }
         } else {
             const testedText = escapeHTML(hourData.tested_ifaces || 'active link');
@@ -323,9 +359,13 @@
         }
 
         if (!canary || !canary.interfaces) {
+            lastCanaryData = null;
             footer.style.display = 'none';
+            if (lastDashboardData) renderRemediationGuide(lastDashboardData, null);
             return;
         }
+        lastCanaryData = canary;
+        if (lastDashboardData) renderRemediationGuide(lastDashboardData, canary);
 
         const cMeta = canary.metadata || {};
         const cIfaces = Object.entries(canary.interfaces).filter(([, d]) => d.state !== 'unused' && d.admin_up !== false);
@@ -369,30 +409,163 @@
         }
     }
 
-    function updateNodeState(nodeId, descId, isOk, label, latencyVal, warnThreshold, unusedText) {
+    function updateNodeState(nodeId, descId, isOk, targetLabel, latencyVal, warnThreshold, unusedText, fullTitle) {
         const nodeEl = document.getElementById(nodeId);
         const descEl = document.getElementById(descId);
         if (!nodeEl || !descEl) return;
 
+        const targetTitle = fullTitle || targetLabel;
+        const targetSpan = '<span class="node-target" title="' + escapeHTML(targetTitle) + '">' + escapeHTML(targetLabel) + '</span>';
+
         if (isOk === null || isOk === undefined) {
             nodeEl.className = 'chain-node';
-            descEl.textContent = label + ' (' + (unusedText || 'Untested') + ')';
+            descEl.innerHTML = targetSpan + '<span class="node-result text-muted"><i class="fa fa-minus-circle"></i> ' + escapeHTML(unusedText || 'Untested') + '</span>';
             return;
         }
         const latKnown = latencyVal !== undefined && latencyVal !== null && latencyVal >= 0;
-        const latSuffix = latKnown ? ' · ' + latencyVal + 'ms' : '';
+        const latPrefix = latKnown ? (latencyVal + 'ms &middot; ') : '';
         const isDegraded = isOk === true && Boolean(warnThreshold) && latKnown && latencyVal >= warnThreshold;
 
         if (!isOk) {
             nodeEl.className = 'chain-node node-fail';
-            descEl.textContent = label + ' (FAIL)';
+            descEl.innerHTML = targetSpan + '<span class="node-result text-red"><i class="fa fa-times-circle"></i> FAIL</span>';
         } else if (isDegraded) {
             nodeEl.className = 'chain-node node-warning';
-            descEl.textContent = label + latSuffix + ' (SLOW)';
+            descEl.innerHTML = targetSpan + '<span class="node-result text-yellow"><i class="fa fa-exclamation-triangle"></i> ' + latPrefix + 'SLOW</span>';
         } else {
             nodeEl.className = 'chain-node node-ok';
-            descEl.textContent = label + latSuffix + ' (OK)';
+            descEl.innerHTML = targetSpan + '<span class="node-result text-green"><i class="fa fa-check-circle"></i> ' + latPrefix + 'OK</span>';
         }
+    }
+
+    function selectConfiguredAndActive(data) {
+        const ifacesObj = (data && data.interfaces) || {};
+        const ifaceEntries = Object.entries(ifacesObj);
+        const configuredEntries = ifaceEntries.filter(([, d]) => d && d.state !== 'unused' && d.admin_up !== false);
+        const activeEntry =
+            configuredEntries.find(([n, d]) => !isWirelessName(n) && d.connectivity === 'OK' && d.dns_ok !== false) ||
+            configuredEntries.find(([, d]) => d.connectivity === 'OK' && d.dns_ok !== false) ||
+            configuredEntries.find(([, d]) => d.connectivity === 'OK') ||
+            configuredEntries[0] ||
+            ifaceEntries[0];
+        return { ifaceEntries, configuredEntries, activeIface: activeEntry ? activeEntry[1] : null };
+    }
+
+    function buildRemediationItems(data, activeIface, configuredEntries, canaryData) {
+        const items = [];
+        let severity = null;
+        function bump(lvl) {
+            if (lvl === 'danger') severity = 'danger';
+            else if (lvl === 'warning' && severity !== 'danger') severity = 'warning';
+        }
+
+        const meta = (data && data.metadata) || {};
+        const thresholds = meta.thresholds || { pihole_ms: 150, dnscrypt_ms: 200, upstream_ms: 200, loss_pct: 5 };
+        const skipDc = Boolean(meta.skip_dnscrypt);
+        const allDown = configuredEntries.length > 0 && configuredEntries.every(([, d]) => d.connectivity === 'DOWN');
+
+        // 1. Client physical link / DHCP lease errors
+        configuredEntries.forEach(([name, d]) => {
+            if (d.connectivity === 'DOWN') {
+                const safe = escapeHTML(name);
+                if (d.carrier === 0) {
+                    bump(allDown ? 'danger' : 'warning');
+                    items.push('<strong>' + safe + ' Link Disconnected:</strong> Check Ethernet cable, switch port LED, or Wi-Fi AP association.');
+                } else if (d.has_ip === false) {
+                    bump(allDown ? 'danger' : 'warning');
+                    items.push('<strong>' + safe + ' Missing IP Lease:</strong> Verify router DHCP pool or renew lease on <code>' + safe + '</code>.');
+                } else if (!allDown) {
+                    bump('warning');
+                    items.push('<strong>Backup Link (' + safe + ') Down:</strong> Secondary interface cannot reach <code>1.1.1.1</code>; reconnect if failover is needed.');
+                }
+            }
+        });
+
+        if (activeIface) {
+            const isConnOk = activeIface.connectivity === 'OK';
+            const hasClientLink = configuredEntries.some(([, d]) => d.carrier !== 0 && d.has_ip !== false);
+
+            // 2. WAN / ISP outage
+            if ((allDown || !isConnOk) && hasClientLink) {
+                bump('danger');
+                items.push('<strong>WAN Connectivity Down:</strong> Primary ping targets unreachable (<code>1.1.1.1</code> / <code>9.9.9.9</code>). Check ISP modem/ONT lights, router WAN port, or ISP status.');
+            }
+
+            // 3. Pi-hole / dnscrypt / Upstream DNS failures
+            if (hasClientLink && isConnOk) {
+                const upHealthy = activeIface.cloudflare === true || activeIface.upstream_secondary_ok === true;
+                if (activeIface.pihole === false && (skipDc || activeIface.dnscrypt === true) && upHealthy) {
+                    bump('danger');
+                    items.push('<strong>Pi-hole Service Down:</strong> Restart FTL (<code>sudo systemctl restart pihole-FTL</code>) and inspect <code>/var/log/pihole/FTL.log</code>.');
+                } else if (!skipDc && activeIface.dnscrypt === false && upHealthy) {
+                    bump('danger');
+                    items.push('<strong>dnscrypt-proxy Failed:</strong> Restart local forwarder (<code>sudo systemctl restart dnscrypt-proxy</code>) and check <code>sudo journalctl -u dnscrypt-proxy -n 30</code>.');
+                } else if (!upHealthy && activeIface.cloudflare === false) {
+                    bump('danger');
+                    items.push('<strong>Upstream DNS Unreachable:</strong> Check WAN routing and firewall rules for outbound DNS (UDP <code>53</code> / DoH HTTPS <code>443</code>).');
+                } else if (activeIface.cloudflare === false && activeIface.upstream_secondary_ok === true) {
+                    bump('warning');
+                    items.push('<strong>Primary Upstream Failover Active:</strong> Primary resolver unreachable; secondary resolver (<code>' + escapeHTML(activeIface.upstream_secondary_ip || '9.9.9.9') + '</code>) is handling traffic.');
+                } else if (activeIface.upstream_secondary_ok === false && activeIface.upstream_secondary_ip) {
+                    bump('warning');
+                    items.push('<strong>Secondary Upstream Unreachable:</strong> Failover resolver <code>' + escapeHTML(activeIface.upstream_secondary_ip) + '</code> timed out; redundancy reduced.');
+                }
+
+                // 4. Latency & packet loss degradations
+                if (activeIface.pihole === true && activeIface.latency_pihole >= thresholds.pihole_ms) {
+                    bump('warning');
+                    items.push('<strong>Slow Pi-hole Response (' + activeIface.latency_pihole + 'ms):</strong> Check <a href="/admin/queries">Pi-hole Query Log</a> for high-volume clients, inspect <code>pihole-FTL.db</code> size, and check flash I/O wait.');
+                }
+                if (!skipDc && activeIface.dnscrypt === true && activeIface.latency_dnscrypt >= thresholds.dnscrypt_ms) {
+                    bump('warning');
+                    items.push('<strong>Slow dnscrypt-proxy (' + activeIface.latency_dnscrypt + 'ms):</strong> Inspect DoH server latency or switch resolvers in <code>/etc/dnscrypt-proxy/dnscrypt-proxy.toml</code>.');
+                }
+                if (activeIface.cloudflare === true && activeIface.latency_cloudflare >= thresholds.upstream_ms) {
+                    bump('warning');
+                    items.push('<strong>High Upstream Latency (' + activeIface.latency_cloudflare + 'ms):</strong> Upstream DNS or ISP link is congested; check WAN bandwidth saturation and modem stats.');
+                }
+                if (activeIface.packet_loss >= thresholds.loss_pct) {
+                    bump('warning');
+                    items.push('<strong>ICMP Packet Loss (' + Number(activeIface.packet_loss).toFixed(1) + '%):</strong> Inspect coax/fiber modem signal levels, Ethernet cabling, or Wi-Fi interference.');
+                }
+            }
+        }
+
+        // 5. Stale telemetry or LAN Canary split-brain disagreement
+        if (lastDataTimestamp && formatRelativeAge(lastDataTimestamp).stale) {
+            bump('warning');
+            items.push('<strong>Telemetry Stale (&gt;15m):</strong> Cron check may have stopped. Verify <code>crontab -l</code> and lock file in <code>/dev/shm/</code>.');
+        }
+        if (canaryData && canaryData.status && canaryData.status !== 'Healthy' && data && data.status === 'Healthy') {
+            bump('warning');
+            const cHost = escapeHTML((canaryData.metadata && canaryData.metadata.host) || 'LAN Canary');
+            items.push('<strong>LAN Canary Disagreement:</strong> Remote client <code>' + cHost + '</code> reports <strong>' + escapeHTML(canaryData.status) + '</strong> while local checks pass — SSH in and check host CPU/I/O wait or LAN switching.');
+        }
+
+        return { severity, items };
+    }
+
+    function renderRemediationGuide(data, canaryData) {
+        const callout = document.getElementById('remediation-callout');
+        const listEl = document.getElementById('remediation-list');
+        const titleEl = document.getElementById('remediation-title');
+        if (!callout || !listEl || !titleEl) return;
+
+        const { configuredEntries, activeIface } = selectConfiguredAndActive(data);
+        const result = buildRemediationItems(data, activeIface, configuredEntries, canaryData);
+
+        if (!result.items.length) {
+            callout.style.display = 'none';
+            listEl.innerHTML = '';
+            return;
+        }
+
+        callout.className = 'callout ' + (result.severity === 'danger' ? 'callout-danger' : 'callout-warning');
+        titleEl.innerHTML = result.severity === 'danger'
+            ? '<i class="fa fa-wrench"></i> Recommended Actions (Outage Detected)'
+            : '<i class="fa fa-wrench"></i> Recommended Actions (Degradation Advisory)';
+        listEl.innerHTML = result.items.map(item => '<li>' + item + '</li>').join('');
+        callout.style.display = 'block';
     }
 
     function updateArrowState(arrowId, isOk) {
@@ -406,6 +579,7 @@
     }
 
     function updateUI(data) {
+        lastDashboardData = data;
         if (data.timestamp) {
             const parsed = new Date(data.timestamp);
             if (!isNaN(parsed.getTime())) {
@@ -419,18 +593,7 @@
         const thresholds = meta.thresholds || { pihole_ms: 150, dnscrypt_ms: 200, upstream_ms: 200, loss_pct: 5 };
         const skipDc = Boolean(meta.skip_dnscrypt);
 
-        const ifacesObj = data.interfaces || {};
-        const ifaceEntries = Object.entries(ifacesObj);
-        const configuredEntries = ifaceEntries.filter(([, d]) => d && d.state !== 'unused' && d.admin_up !== false);
-
-        // Pick active interface: first online wired -> first online any -> first configured -> first any
-        let activeEntry =
-            configuredEntries.find(([n, d]) => !isWirelessName(n) && d.connectivity === 'OK' && d.dns_ok !== false) ||
-            configuredEntries.find(([, d]) => d.connectivity === 'OK' && d.dns_ok !== false) ||
-            configuredEntries.find(([, d]) => d.connectivity === 'OK') ||
-            configuredEntries[0] ||
-            ifaceEntries[0];
-        const activeIface = activeEntry ? activeEntry[1] : null;
+        const { ifaceEntries, configuredEntries, activeIface } = selectConfiguredAndActive(data);
 
         let activeStatus = data.status || 'Healthy';
         let degReason = '';
@@ -548,6 +711,9 @@
             const secondaryIp = activeIface.upstream_secondary_ip || meta.upstream_secondary_ip || '';
             const upstreamProto = meta.upstream_protocol || 'UDP/53';
             const upLabel = secondaryIp
+                ? upstreamIp + ' + ' + secondaryIp
+                : upstreamIp + ':53';
+            const upTitle = secondaryIp
                 ? upstreamIp + ' + ' + secondaryIp + ' (' + upstreamProto + ')'
                 : upstreamIp + ':53 (' + upstreamProto + ')';
 
@@ -558,7 +724,7 @@
 
             const cfPass = (activeIface.cloudflare === true || activeIface.upstream_secondary_ok === true) && isConnOk;
             const cfState = (activeIface.cloudflare === null && !isConnOk) ? null : cfPass;
-            updateNodeState('node-cloudflare', 'node-cloudflare-desc', cfState, upLabel, activeIface.latency_cloudflare, thresholds.upstream_ms);
+            updateNodeState('node-cloudflare', 'node-cloudflare-desc', cfState, upLabel, activeIface.latency_cloudflare, thresholds.upstream_ms, undefined, upTitle);
 
             updateArrowState('arrow-1', activeIface.pihole);
             updateArrowState('arrow-2', activeIface.dnscrypt);
@@ -623,6 +789,8 @@
                 val < 95.0 ? 'red' : (val < 99.0 ? 'yellow' : 'green')
             );
         }
+
+        renderRemediationGuide(data, lastCanaryData);
     }
 
     function renderHistoricalGrid(history) {
