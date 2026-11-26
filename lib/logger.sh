@@ -1,20 +1,20 @@
 #!/usr/bin/env bash
 
-# lib/logger.sh - Logging and state database management
+# lib/logger.sh - Logging, state database, log rotation, and alerting
 
 DEFAULT_RAM_DIR="/dev/shm"
 [[ ! -d "/dev/shm" ]] && DEFAULT_RAM_DIR="/tmp"
 RAM_STATE_FILE="${RAM_STATE_FILE:-${DEFAULT_RAM_DIR}/internet_health_history.txt}"
 readonly RAM_STATE_FILE
-readonly MAX_RAM_LINES=8640 # 30 days of 5-minute runs (30 * 24 * 12)
+readonly MAX_RAM_LINES=17280 # 30 days of 5-minute runs across 2 interfaces (30 * 24 * 12 * 2)
 
-# Write to the physical disk log file
+# Write to the physical disk log file (or stderr in non-pretty stdout mode)
 log() {
     local message="$1"
     local timestamp
     timestamp=$(date '+%Y-%m-%d %H:%M:%S')
     local log_entry="$timestamp ${TAG} $message"
-    
+
     if [[ "$LOG_TO_FILE" == "true" && -n "$LOG_FILE" ]]; then
         echo "$log_entry" >> "$LOG_FILE"
         WRITE_OCCURRED=true
@@ -27,11 +27,40 @@ log() {
 syslog_alert() {
     local message="$1"
     local priority="${2:-user.notice}"
-    # Send message to syslog with tag
     logger -t "internet-health-check" -p "$priority" "$message" 2>/dev/null || true
 }
 
+# Webhook alerting (non-fatal HTTP JSON POST on state transitions)
+send_webhook_alert() {
+    local iface=$1 status=$2 message=$3
+    local url="${WEBHOOK_URL:-}"
+    [[ -z "$url" ]] && return 0
+    command -v curl >/dev/null 2>&1 || return 0
+
+    local host_name payload ts
+    host_name=$(hostname 2>/dev/null || echo "unknown")
+    ts=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+
+    if command -v python3 >/dev/null 2>&1; then
+        payload=$(python3 -c '
+import json, sys
+print(json.dumps({
+    "host": sys.argv[1],
+    "interface": sys.argv[2],
+    "status": sys.argv[3],
+    "message": sys.argv[4],
+    "timestamp": sys.argv[5],
+}))
+' "$host_name" "$iface" "$status" "$message" "$ts" 2>/dev/null)
+    else
+        payload="{\"host\":\"$host_name\",\"interface\":\"$iface\",\"status\":\"$status\",\"timestamp\":\"$ts\"}"
+    fi
+
+    curl -fsS --max-time 5 -H "Content-Type: application/json" -d "$payload" "$url" >/dev/null 2>&1 || true
+}
+
 # Append check run to RAM state database
+# Format: ts,iface,connectivity,dns_ok,pihole_ok,dnscrypt_ok,cf_ok,pi_lat,dns_lat,cf_lat,loss,client_ok,state,ping_lat
 record_run() {
     local interface=$1
     local connectivity=$2
@@ -43,276 +72,96 @@ record_run() {
     local dns_lat=$8
     local cf_lat=$9
     local loss=${10}
-    
+    local client_ok=${11:-true}
+    local iface_state=${12:-""}
+    local ping_lat=${13:--1}
+
     local timestamp
     timestamp=$(date +%s)
-    
-    # Create logs directory in RAM if needed
+
     local ram_dir
     ram_dir=$(dirname "$RAM_STATE_FILE")
     mkdir -p "$ram_dir" 2>/dev/null
-    
-    # Append CSV line to RAM file
-    # Format: timestamp,interface,connectivity,dns_ok,pihole_ok,dnscrypt_ok,cloudflare_ok,pihole_lat,dnscrypt_lat,cf_lat,loss
-    echo "$timestamp,$interface,$connectivity,$dns_ok,$pihole,$dnscrypt,$cloudflare,$pi_lat,$dns_lat,$cf_lat,$loss" >> "$RAM_STATE_FILE"
-    
-    # Prune history to limit size
+
+    echo "$timestamp,$interface,$connectivity,$dns_ok,$pihole,$dnscrypt,$cloudflare,$pi_lat,$dns_lat,$cf_lat,$loss,$client_ok,$iface_state,$ping_lat" >> "$RAM_STATE_FILE"
+
+    # Prune only when exceeding buffer headroom (avoids rewriting file on every run)
     if [[ -f "$RAM_STATE_FILE" ]]; then
-        # Use tail to keep last 8640 lines in RAM
-        local temp_file="${ram_dir}/ih_tmp.$$"
-        tail -n "$MAX_RAM_LINES" "$RAM_STATE_FILE" > "$temp_file" 2>/dev/null && mv -f "$temp_file" "$RAM_STATE_FILE"
+        local line_count
+        line_count=$(wc -l < "$RAM_STATE_FILE" 2>/dev/null || echo 0)
+        if (( line_count > MAX_RAM_LINES + 500 )); then
+            local temp_file="${ram_dir}/ih_tmp.$$"
+            if tail -n "$MAX_RAM_LINES" "$RAM_STATE_FILE" > "$temp_file" 2>/dev/null; then
+                mv -f "$temp_file" "$RAM_STATE_FILE" 2>/dev/null || rm -f "$temp_file" 2>/dev/null
+            else
+                rm -f "$temp_file" 2>/dev/null
+            fi
+        fi
     fi
 }
 
-# Determine if the current run state has changed compared to the last run in RAM
+# Determine if the current run state has changed compared to the LAST recorded run in RAM.
+# Must be called BEFORE record_run() appends the current run!
 detect_state_change() {
     local interface=$1
     local current_connectivity=$2
     local current_dns_ok=$3
-    
+    local current_degraded=${4:-false}
+
     [[ ! -f "$RAM_STATE_FILE" ]] && return 0
-    
-    # Get all entries for this interface
-    local entries
-    entries=$(grep -F ",$interface," "$RAM_STATE_FILE" 2>/dev/null || true)
-    
-    [[ -z "$entries" ]] && return 0
-    
-    local count
-    count=$(echo "$entries" | wc -l)
-    
-    # If only 1 entry, there is no previous state to compare against, so log it
-    if (( count < 2 )); then
+
+    local last_entry
+    last_entry=$(grep -F ",$interface," "$RAM_STATE_FILE" 2>/dev/null | grep -v ',UNUSED,' | tail -n 1 || true)
+
+    [[ -z "$last_entry" ]] && return 0
+
+    local last_conn last_dns last_pi_ok last_dc_ok last_cf_ok last_pi_lat last_dc_lat last_cf_lat last_loss
+    IFS=',' read -r _ _ last_conn last_dns last_pi_ok last_dc_ok last_cf_ok last_pi_lat last_dc_lat last_cf_lat last_loss _ <<< "$last_entry"
+
+    local pi_warn="${PIHOLE_LATENCY_WARN_MS:-150}"
+    local dc_warn="${DNSCRYPT_LATENCY_WARN_MS:-200}"
+    local up_warn="${UPSTREAM_LATENCY_WARN_MS:-200}"
+    local loss_warn="${PACKET_LOSS_WARN_PCT:-5}"
+
+    local last_degraded=false
+    if [[ "$last_conn" == "OK" && "$last_dns" == "true" ]]; then
+        if [[ "$last_pi_ok" == "true" && "${last_pi_lat:-0}" -ge "$pi_warn" ]] 2>/dev/null; then
+            last_degraded=true
+        elif [[ "${SKIP_DNSCRYPT:-false}" != "true" && "$last_dc_ok" == "true" && "${last_dc_lat:-0}" -ge "$dc_warn" ]] 2>/dev/null; then
+            last_degraded=true
+        elif [[ "$last_cf_ok" == "true" && "${last_cf_lat:-0}" -ge "$up_warn" ]] 2>/dev/null; then
+            last_degraded=true
+        elif [[ -n "$last_loss" ]]; then
+            local loss_hit=0
+            loss_hit=$(awk -v l="${last_loss%\%}" -v w="$loss_warn" 'BEGIN { print (l+0 >= w+0) ? 1 : 0 }' 2>/dev/null || echo 0)
+            (( loss_hit == 1 )) && last_degraded=true
+        fi
+    fi
+
+    if [[ "$last_conn" != "$current_connectivity" || "$last_dns" != "$current_dns_ok" || "$last_degraded" != "$current_degraded" ]]; then
         return 0
     fi
-    
-    # Parse the second to last entry (the previous run)
-    local last_entry
-    last_entry=$(echo "$entries" | tail -n 2 | head -n 1)
-    
-    local last_conn
-    last_conn=$(echo "$last_entry" | cut -d, -f3)
-    local last_dns
-    last_dns=$(echo "$last_entry" | cut -d, -f4)
-    
-    if [[ "$last_conn" != "$current_connectivity" || "$last_dns" != "$current_dns_ok" ]]; then
-        return 0 # State changed
-    fi
-    
-    return 1 # State identical
+
+    return 1
 }
 
-# Log rotation for disk logs
+# Log rotation for disk logs (preserves .1.gz, .2.gz, ... up to MAX_ROTATIONS)
 rotate_log() {
     [[ "$LOG_TO_FILE" != "true" || -z "$LOG_FILE" || ! -f "$LOG_FILE" ]] && return
-    
+
     local size
     size=$(wc -c < "$LOG_FILE" 2>/dev/null)
     size=$((size + 0)) 2>/dev/null || size=0
-    
+
     if (( size > MAX_LOG_SIZE )); then
         for ((i=MAX_ROTATIONS; i>=1; i--)); do
-            local old="$LOG_FILE.$i"
-            local new="$LOG_FILE.$((i+1))"
+            local old="$LOG_FILE.$i.gz"
+            local new="$LOG_FILE.$((i+1)).gz"
             [[ -f "$old" ]] && mv -f "$old" "$new" 2>/dev/null
         done
-        
+
         gzip -f -c "$LOG_FILE" > "$LOG_FILE.1.gz" 2>/dev/null
         : > "$LOG_FILE"
         log "LOG ROTATED"
-    fi
-}
-
-# Generate the JSON payload for the dashboard
-generate_status_json() {
-    local output_file=$1
-    [[ -z "$output_file" ]] && return
-    
-    local temp_json="/tmp/status.json.tmp"
-    
-    # 1. Build basic fields
-    local timestamp
-    timestamp=$(date '+%Y-%m-%d %H:%M:%S')
-    
-    # Get overall status from globals set in main loop
-    local overall_status="Healthy"
-    if [[ "$STATUS_eth0_CONNECTIVITY" == "DOWN" && "$STATUS_wlan0_CONNECTIVITY" == "DOWN" ]]; then
-        overall_status="Outage"
-    elif [[ "$STATUS_eth0_CONNECTIVITY" == "DOWN" || "$STATUS_wlan0_CONNECTIVITY" == "DOWN" ]]; then
-        overall_status="Partial Outage"
-    elif [[ "$STATUS_eth0_DNS" == "false" || "$STATUS_wlan0_DNS" == "false" ]]; then
-        overall_status="DNS Issues"
-    fi
-    
-    # 2. Calculate SLA percentage over the last 30 days
-    local total_runs=0
-    local healthy_runs=0
-    local sla_pct=100.00
-    if [[ -f "$RAM_STATE_FILE" ]]; then
-        total_runs=$(wc -l < "$RAM_STATE_FILE" 2>/dev/null || echo 0)
-        # Healthy runs have connectivity=OK and dns_ok=true
-        healthy_runs=$(grep -c ",OK,true," "$RAM_STATE_FILE" 2>/dev/null || echo 0)
-        if (( total_runs > 0 )); then
-            # Perform floating point division in awk
-            sla_pct=$(awk "BEGIN {printf \"%.2f\", ($healthy_runs / $total_runs) * 100}")
-        fi
-    fi
-
-    # 3. Generate Uptime History JSON structure
-    # We will build a JSON array of the last 72 hours (3 rows of 24 hours)
-    # And a 30-day daily summary list
-    local history_json="["
-    local current_time
-    current_time=$(date +%s)
-    local one_hour=3600
-    local one_day=86400
-    
-    local day_start
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-        day_start=$(date -j -f "%Y-%m-%d" "$(date +%Y-%m-%d)" +%s 2>/dev/null)
-    else
-        day_start=$(date -d "today 00:00:00" +%s 2>/dev/null)
-    fi
-
-    # Compile 72 hours grid (Today, Yesterday, 2 Days Ago)
-    local labels=("2 Days Ago" "Yesterday" "Today")
-    for d in {0..2}; do
-        local label="${labels[$d]}"
-        local target_day_start=$(( day_start - (2 - d) * one_day ))
-        local target_date
-        if [[ "$OSTYPE" == "darwin"* ]]; then
-            target_date=$(date -r "$target_day_start" "+%-d %b" 2>/dev/null)
-        else
-            target_date=$(date -d "@$target_day_start" "+%-d %b" 2>/dev/null)
-        fi
-        [[ $d -gt 0 ]] && history_json+=","
-        history_json+="{\"label\":\"$label\",\"date\":\"$target_date\",\"hours\":["
-        
-        # Hours from 0 to 23
-        for h in {0..23}; do
-            [[ $h -gt 0 ]] && history_json+=","
-            
-            # Determine timestamp range for this specific hour
-            local hour_start=$(( target_day_start + h * one_hour ))
-            local hour_end=$(( hour_start + one_hour ))
-            
-            # Query RAM file for entries in this hour
-            local hour_status="INACTIVE"
-            local hour_uptime=100
-            
-            if [[ -f "$RAM_STATE_FILE" ]]; then
-                # Get all records in this hour window
-                local records
-                records=$(awk -F, -v start="$hour_start" -v end="$hour_end" '$1 >= start && $1 < end' "$RAM_STATE_FILE")
-                
-                if [[ -n "$records" ]]; then
-                    local total_h_runs
-                    total_h_runs=$(echo "$records" | wc -l)
-                    local fail_h_runs
-                    fail_h_runs=$(echo "$records" | grep -vc ",OK,true," || true)
-                    local outage_h_runs
-                    outage_h_runs=$(echo "$records" | grep -c ",DOWN," || true)
-                    
-                    if (( outage_h_runs > 0 )); then
-                        hour_status="DANGER"
-                    elif (( fail_h_runs > 0 )); then
-                        hour_status="WARNING"
-                    else
-                        hour_status="OK"
-                    fi
-                    
-                    # Calculate uptime percentage for this hour
-                    if (( total_h_runs > 0 )); then
-                        hour_uptime=$(( (total_h_runs - outage_h_runs) * 100 / total_h_runs ))
-                    fi
-                fi
-            fi
-            
-            history_json+="{\"hour\":$h,\"status\":\"$hour_status\",\"uptime\":$hour_uptime}"
-        done
-        history_json+="]}"
-    done
-    history_json+="]"
-
-    # 4. Generate incident reports from the text logs
-    # We parse the main log file to retrieve DOWN incidents and DNS chain failures
-    local incidents_json="["
-    if [[ -f "$LOG_FILE" ]]; then
-        local count=0
-        # Parse log file for DOWN/Test: Fail entries
-        # Format: 2026-07-20 02:15:02 [INTERNET-HEALTH-CHECK] [eth0] Test: Fail during Ping
-        while read -r line; do
-            [[ -z "$line" ]] && continue
-            local ts
-            ts=$(echo "$line" | cut -d' ' -f1-2)
-            local rest
-            rest=$(echo "$line" | cut -d' ' -f3-)
-            local iface
-            iface=$(echo "$rest" | grep -oE '\[[a-zA-Z0-9]+\]' | tail -1 | tr -d '[]')
-            local msg
-            msg=$(echo "$rest" | sed -E 's/.*\[[a-zA-Z0-9]+\] //')
-            
-            # Escape quotes
-            msg=$(echo "$msg" | sed 's/"/\\"/g')
-            
-            local type="warning"
-            local badge="DNS Fail"
-            if [[ "$msg" =~ "DOWN" || "$msg" =~ "Ping" ]]; then
-                type="outage"
-                badge="Outage"
-            fi
-            
-            [[ $count -gt 0 ]] && incidents_json+=","
-            incidents_json+="{\"type\":\"$type\",\"badge\":\"$badge\",\"timestamp\":\"$ts ($iface)\",\"description\":\"$msg\",\"duration\":\"\"}"
-            ((count++)) || true
-            [[ $count -ge 10 ]] && break # Limit to last 10 incidents
-        done < <(grep -a "INTERNET-HEALTH-CHECK" "$LOG_FILE" | grep -E "DOWN|Test: Fail" | tail -n 10 | tac)
-    fi
-    incidents_json+="]"
-
-    # Assemble final JSON
-    cat << EOF > "$temp_json"
-{
-  "timestamp": "$timestamp",
-  "status": "$overall_status",
-  "sla_percentage": $sla_pct,
-  "interfaces": {
-    "eth0": {
-      "exists": ${STATUS_eth0_EXISTS:-false},
-      "connectivity": "${STATUS_eth0_CONNECTIVITY:-INACTIVE}",
-      "dns_ok": ${STATUS_eth0_DNS:-true},
-      "pihole": ${STATUS_eth0_PIHOLE:-true},
-      "dnscrypt": ${STATUS_eth0_DNSCRYPT:-true},
-      "cloudflare": ${STATUS_eth0_CLOUDFLARE:-true},
-      "latency_pihole": ${STATUS_eth0_PIHOLE_LAT:-0},
-      "latency_dnscrypt": ${STATUS_eth0_DNSCRYPT_LAT:-0},
-      "latency_cloudflare": ${STATUS_eth0_CLOUDFLARE_LAT:-0},
-      "packet_loss": ${STATUS_eth0_LOSS:-0.0}
-    },
-    "wlan0": {
-      "exists": ${STATUS_wlan0_EXISTS:-false},
-      "connectivity": "${STATUS_wlan0_CONNECTIVITY:-INACTIVE}",
-      "dns_ok": ${STATUS_wlan0_DNS:-true},
-      "pihole": ${STATUS_wlan0_PIHOLE:-true},
-      "dnscrypt": ${STATUS_wlan0_DNSCRYPT:-true},
-      "cloudflare": ${STATUS_wlan0_CLOUDFLARE:-true},
-      "latency_pihole": ${STATUS_wlan0_PIHOLE_LAT:-0},
-      "latency_dnscrypt": ${STATUS_wlan0_DNSCRYPT_LAT:-0},
-      "latency_cloudflare": ${STATUS_wlan0_CLOUDFLARE_LAT:-0},
-      "packet_loss": ${STATUS_wlan0_LOSS:-0.0}
-    }
-  },
-  "history": $history_json,
-  "incidents": $incidents_json
-}
-EOF
-
-    # Output to the final destination safely and atomically
-    mkdir -p "$(dirname "$output_file")" 2>/dev/null
-    if mv -f "$temp_json" "$output_file" 2>/dev/null; then
-        :
-    else
-        cat "$temp_json" > "$output_file" 2>/dev/null || true
-        rm -f "$temp_json" 2>/dev/null || true
     fi
 }

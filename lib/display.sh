@@ -24,8 +24,19 @@ print_pretty_interface() {
     local cf_lat=${12}
     local upstream_ip=${13:-"1.1.1.3"}
     local dns_ok=${14:-"true"}
+    local admin_up=${15:-1}
+    local deg_reason=${16:-""}
+    local sec_ip=${17:-""}
+    local sec_ok=${18:-true}
+    local sec_lat=${19:--1}
 
     echo -e "\033[1mInterface: \033[33m$iface\033[0m"
+
+    if (( admin_up == 0 )) || [[ "$conn_result" == "UNUSED" ]]; then
+        echo -e "  \033[90m- Status: ADMINISTRATIVELY DOWN (Unused — excluded from SLA)\033[0m"
+        echo ""
+        return
+    fi
 
     # 1. Carrier check
     if (( carrier == 1 )); then
@@ -74,16 +85,26 @@ print_pretty_interface() {
     fi
 
     local upstream_name="Upstream"
-    [[ "$upstream_ip" =~ 1\.1\.1\. || "$upstream_ip" =~ 1\.0\.0\. ]] && upstream_name="Cloudflare"
+    [[ "$upstream_ip" =~ ^1\.(1|0)\. ]] && upstream_name="Cloudflare"
     if [[ "$cf_ok" == "true" ]]; then
         echo -e "     \033[32m✓\033[0m Hop 3 ($upstream_name @$upstream_ip:53): \033[32mPASS\033[0m (${cf_lat}ms)"
     else
         echo -e "     \033[31m✗\033[0m Hop 3 ($upstream_name @$upstream_ip:53): \033[31mFAIL\033[0m"
     fi
 
+    if [[ -n "$sec_ip" ]]; then
+        if [[ "$sec_ok" == "true" ]]; then
+            echo -e "     \033[32m✓\033[0m Hop 3b (Secondary @$sec_ip:53): \033[32mPASS\033[0m (${sec_lat}ms)"
+        else
+            echo -e "     \033[33m!\033[0m Hop 3b (Secondary @$sec_ip:53): \033[33mFAIL\033[0m"
+        fi
+    fi
+
     # Status & Diagnostics breakdown
-    if [[ "$conn_result" == "OK" && "$dns_ok" == "true" ]]; then
+    if [[ "$conn_result" == "OK" && "$dns_ok" == "true" && -z "$deg_reason" ]]; then
         echo -e "  \033[1;32mSTATUS: Interface online and fully operational.\033[0m"
+    elif [[ "$conn_result" == "OK" && "$dns_ok" == "true" && -n "$deg_reason" ]]; then
+        echo -e "  \033[1;33mSTATUS: Degraded — ${deg_reason}\033[0m"
     else
         echo ""
         echo -e "  \033[1;31mFAILURE DIAGNOSIS:\033[0m"
@@ -91,7 +112,7 @@ print_pretty_interface() {
             echo -e "     \033[1;33m[!] Internet Connectivity Loss\033[0m"
             echo -e "     \033[90m└─ Root cause: Gateway or WAN connection unreachable (100% packet loss to $PING_TARGET).\033[0m"
         fi
-        if [[ "$pi_ok" == "false" && "$dc_ok" == "true" ]]; then
+        if [[ "$pi_ok" == "false" && ( "${SKIP_DNSCRYPT:-false}" == "true" || "$dc_ok" == "true" ) && "$cf_ok" == "true" ]]; then
             echo -e "     \033[1;33m[!] Pi-hole Server Failure\033[0m"
             echo -e "     \033[90m└─ Root cause: Pi-hole is not reachable at $pi_host:$PIHOLE_PORT.\033[0m"
         elif [[ "${SKIP_DNSCRYPT:-false}" != "true" && "$dc_ok" == "false" && "$cf_ok" == "true" ]]; then

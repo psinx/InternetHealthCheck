@@ -9,14 +9,14 @@
     <link rel="apple-touch-icon" href="/admin/img/favicons/apple-touch-icon.png" sizes="180x180">
     <link rel="icon" href="/admin/img/favicons/favicon-32x32.png" sizes="32x32" type="image/png">
     <link rel="icon" href="/admin/img/favicons/favicon-16x16.png" sizes="16x16" type="image/png">
-    
+
     <!-- Pi-hole Native Fonts & Stylesheets -->
     <link rel="stylesheet" href="/admin/vendor/fonts/source-sans-pro/source-sans-pro.css">
     <link rel="stylesheet" href="/admin/vendor/bootstrap/css/bootstrap.min.css">
     <link rel="stylesheet" href="/admin/vendor/font-awesome/css/all.min.css">
     <link rel="stylesheet" href="/admin/vendor/adminLTE/AdminLTE.min.css">
     <link rel="stylesheet" href="/admin/style/pi-hole.css">
-    
+
     <!-- Auto Dark/Light Theme (follows device display mode, same as Pi-hole admin) -->
     <link rel="stylesheet" href="/admin/style/themes/default-dark.css" media="(prefers-color-scheme: dark)">
     <link rel="stylesheet" href="/admin/style/themes/default-light.css" media="not (prefers-color-scheme: dark)">
@@ -24,130 +24,195 @@
     <style>
         html, body { height: 100%; }
         body { font-family: 'Source Sans Pro', sans-serif; }
-        
-        /* 72h Uptime Grid Styling with Time Hover Tooltips */
+
+        /* 72h Uptime Grid Styling */
         .grid-row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
-        .row-label { width: 100px; font-weight: 600; opacity: 0.8; font-size: 0.95em; }
+        .row-label { width: 112px; flex-shrink: 0; font-weight: 600; opacity: 0.9; font-size: 0.95em; line-height: 1.25; }
+        .row-label .row-date { display: block; font-size: 0.8em; font-weight: normal; opacity: 0.85; }
         .row-cells { display: flex; gap: 3px; flex-grow: 1; position: relative; }
-        
-        .hour-cell { 
-            flex: 1; 
-            height: 26px; 
-            background-color: #d2d6de; 
+
+        .hour-cell {
+            flex: 1;
+            height: 26px;
+            background-color: #d2d6de;
             opacity: 0.7;
-            border-radius: 3px; 
-            transition: transform 0.15s, box-shadow 0.15s, background-color 0.2s, opacity 0.2s; 
+            border-radius: 3px;
+            transition: transform 0.15s, box-shadow 0.15s, background-color 0.2s, opacity 0.2s;
             position: relative;
             cursor: pointer;
         }
-        .hour-cell:hover { 
-            transform: scaleY(1.35); 
+        .hour-cell:hover,
+        .hour-cell:focus {
+            transform: scaleY(1.3);
             z-index: 10;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+            outline: 2px solid #3c8dbc;
+            outline-offset: 1px;
         }
         .hour-cell.hour-ok { background-color: #00a65a; opacity: 1; }
         .hour-cell.hour-warning { background-color: #f39c12; opacity: 1; }
         .hour-cell.hour-danger { background-color: #dd4b39; opacity: 1; }
         .hour-cell.hour-inactive { background-color: #d2d6de; opacity: 0.7; }
-        
-        /* Time Labels Header above Grid */
-        .time-header-row { display: flex; margin-left: 110px; margin-bottom: 6px; gap: 3px; font-size: 11px; font-weight: bold; }
-        
-        /* DNS Chain Node Styling */
-        .chain-flow { 
-            display: flex; 
-            align-items: stretch; 
-            justify-content: space-between; 
-            gap: 12px; 
-            padding: 15px 5px; 
+
+        /* Left-to-right hard split + subtle hatching for recovered incidents (CVD-safe) */
+        .hour-cell.hour-danger-recovered {
+            background:
+                linear-gradient(90deg,
+                    transparent 0%, transparent 46%,
+                    rgba(255,255,255,0.88) 46%, rgba(255,255,255,0.88) 54%,
+                    #00a65a 54%, #00a65a 100%),
+                repeating-linear-gradient(-45deg,
+                    #dd4b39 0px, #dd4b39 3px,
+                    #c0392b 3px, #c0392b 6px);
+            opacity: 1;
         }
-        .chain-node { 
-            border: 2px solid #d2d6de; 
-            border-radius: 6px; 
-            padding: 14px 12px; 
-            flex: 1 1 0; 
-            min-width: 0; 
+        .hour-cell.hour-warning-recovered {
+            background:
+                linear-gradient(90deg,
+                    transparent 0%, transparent 46%,
+                    rgba(255,255,255,0.88) 46%, rgba(255,255,255,0.88) 54%,
+                    #00a65a 54%, #00a65a 100%),
+                repeating-linear-gradient(-45deg,
+                    #f39c12 0px, #f39c12 3px,
+                    #d68910 3px, #d68910 6px);
+            opacity: 1;
+        }
+
+        /* Time Labels Header above Grid */
+        .time-header-row { display: flex; margin-left: 122px; margin-bottom: 6px; gap: 3px; font-size: 11px; font-weight: bold; }
+        .time-header-scale { display: flex; flex-grow: 1; justify-content: space-between; font-family: monospace; font-size: 11px; opacity: 0.85; }
+
+        /* Heatmap Legend */
+        .heatmap-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; font-size: 12px; padding: 10px 15px; }
+        .legend-item { display: inline-flex; align-items: center; gap: 6px; }
+        .legend-swatch { display: inline-block; width: 14px; height: 14px; border-radius: 3px; flex-shrink: 0; }
+
+        /* DNS Chain Node Styling */
+        .chain-flow {
+            display: flex;
+            align-items: stretch;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 12px 5px;
+        }
+        .chain-node {
+            border: 2px solid #d2d6de;
+            border-radius: 6px;
+            padding: 12px 10px;
+            flex: 1 1 0;
+            min-width: 0;
             display: flex;
             flex-direction: column;
             justify-content: center;
             align-items: center;
-            text-align: center; 
+            text-align: center;
             box-sizing: border-box;
             transition: border-color 0.2s;
         }
         .chain-node.node-ok { border-color: #00a65a; }
         .chain-node.node-warning { border-color: #f39c12; }
         .chain-node.node-fail { border-color: #dd4b39; }
-        .node-name { font-weight: bold; font-size: 1.1em; }
-        .node-status-desc { font-size: 0.85em; opacity: 0.7; font-family: monospace; margin-top: 4px; word-break: break-word; line-height: 1.35; }
-        .connector-arrow { 
-            display: flex; 
-            align-items: center; 
-            justify-content: center; 
-            font-size: 1.5em; 
-            color: #d2d6de; 
-            font-weight: bold; 
-            flex-shrink: 0; 
+        .node-name { font-weight: bold; font-size: 1.08em; }
+        .node-status-desc { font-size: 0.85em; opacity: 0.85; font-family: monospace; margin-top: 5px; word-break: break-word; line-height: 1.35; width: 100%; }
+        .client-iface-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 2px 4px; font-size: 0.95em; text-align: left; }
+        .client-iface-muted { opacity: 0.65; }
+        .connector-arrow {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5em;
+            color: #d2d6de;
+            font-weight: bold;
+            flex-shrink: 0;
             transition: color 0.2s;
         }
         .connector-arrow.arrow-ok { color: #00a65a; }
         .connector-arrow.arrow-fail { color: #dd4b39; }
 
+        .small-box.bg-yellow { text-shadow: 0 1px 2px rgba(0,0,0,0.35); }
+        .canary-strip { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; font-size: 0.9em; }
+
         @media (prefers-color-scheme: dark) {
-            .hour-cell { background-color: #4b646f; opacity: 0.45; }
+            .hour-cell { background-color: #4b646f; opacity: 0.55; }
             .hour-cell.hour-ok { background-color: #00a65a; opacity: 1; }
             .hour-cell.hour-warning { background-color: #f39c12; opacity: 1; }
             .hour-cell.hour-danger { background-color: #dd4b39; opacity: 1; }
-            .hour-cell.hour-inactive { background-color: #4b646f; opacity: 0.45; }
+            .hour-cell.hour-inactive { background-color: #4b646f; opacity: 0.55; }
+            .hour-cell.hour-danger-recovered {
+                background:
+                    linear-gradient(90deg,
+                        transparent 0%, transparent 46%,
+                        rgba(34,45,50,0.92) 46%, rgba(34,45,50,0.92) 54%,
+                        #00a65a 54%, #00a65a 100%),
+                    repeating-linear-gradient(-45deg,
+                        #dd4b39 0px, #dd4b39 3px,
+                        #b93829 3px, #b93829 6px);
+                opacity: 1;
+            }
+            .hour-cell.hour-warning-recovered {
+                background:
+                    linear-gradient(90deg,
+                        transparent 0%, transparent 46%,
+                        rgba(34,45,50,0.92) 46%, rgba(34,45,50,0.92) 54%,
+                        #00a65a 54%, #00a65a 100%),
+                    repeating-linear-gradient(-45deg,
+                        #f39c12 0px, #f39c12 3px,
+                        #c87f0a 3px, #c87f0a 6px);
+                opacity: 1;
+            }
             .chain-node { border-color: #4b646f; }
             .chain-node.node-ok { border-color: #00a65a; }
             .chain-node.node-warning { border-color: #f39c12; }
             .chain-node.node-fail { border-color: #dd4b39; }
-            .connector-arrow { color: #4b646f; }
+            .connector-arrow { color: #6c828c; }
             .connector-arrow.arrow-ok { color: #00a65a; }
             .connector-arrow.arrow-fail { color: #dd4b39; }
+            .box.box-default { border-top-color: #4b646f; }
+            .box-header { border-bottom-color: rgba(255,255,255,0.12) !important; }
+            .box-footer { border-top-color: rgba(255,255,255,0.12) !important; }
         }
-        
-        /* Mobile: uniform 2x2 grid */
+
+        /* Mobile layout improvements */
         @media (max-width: 767px) {
-            .chain-flow { 
-                display: grid; 
-                grid-template-columns: 1fr 1fr; 
-                grid-auto-rows: 1fr; 
-                gap: 10px; 
-                padding: 10px 0; 
+            .chain-flow {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                grid-auto-rows: 1fr;
+                gap: 10px;
+                padding: 10px 0;
             }
-            .chain-node { 
-                width: 100%; 
-                height: 100%; 
-                padding: 12px 6px; 
-                min-height: 72px; 
+            .chain-node {
+                width: 100%;
+                height: 100%;
+                padding: 10px 6px;
+                min-height: 72px;
             }
             .connector-arrow { display: none; }
             .node-name { font-size: 0.95em; }
-            .node-status-desc { font-size: 0.75em; }
+            .node-status-desc { font-size: 0.78em; }
             .box-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; }
-            .box-header .box-tools { float: none; margin-left: auto; order: -1; width: 100%; text-align: right; margin-bottom: 4px; }
-            .time-header-row span:nth-child(2),
-            .time-header-row span:nth-child(3),
-            .time-header-row span:nth-child(5),
-            .time-header-row span:nth-child(6) { display: none; }
+            .box-header .box-tools { float: none; order: 1; width: 100%; text-align: left; margin-top: 6px; margin-bottom: 0; position: static; }
+            .grid-row { flex-direction: column; align-items: stretch; gap: 4px; }
+            .row-label { width: auto; display: flex; align-items: baseline; justify-content: space-between; }
+            .row-label .row-date { display: inline; }
+            .row-cells { gap: 2px; }
+            .time-header-row { margin-left: 0; }
+            .time-header-scale span:nth-child(2),
+            .time-header-scale span:nth-child(3),
+            .time-header-scale span:nth-child(5),
+            .time-header-scale span:nth-child(6) { display: none; }
         }
-        
-        /* AdminLTE Box Styling (inherits theme colors) */
+
+        /* AdminLTE Box Styling */
         .box { border-top: 3px solid #3c8dbc; border-radius: 3px; margin-bottom: 20px; box-shadow: 0 1px 1px rgba(0,0,0,0.1); }
         .box.box-success { border-top-color: #00a65a; }
+        .box.box-warning { border-top-color: #f39c12; }
+        .box.box-danger { border-top-color: #dd4b39; }
         .box.box-primary { border-top-color: #3c8dbc; }
         .box.box-info { border-top-color: #00c0ef; }
         .box.box-default { border-top-color: #d2d6de; }
-
-        @media (prefers-color-scheme: dark) {
-            .box.box-default { border-top-color: #4b646f; }
-        }
         .box-header { padding: 12px 15px; border-bottom: 1px solid rgba(0,0,0,0.1); }
         .box-title { font-size: 1.1em; font-weight: 600; margin: 0; }
-        .table-bordered { border: 1px solid rgba(0,0,0,0.1); }
-        .table-bordered > tbody > tr > td { border: 1px solid rgba(0,0,0,0.1); }
     </style>
 </head>
 <body class="default-auto hold-transition sidebar-mini layout-boxed">
@@ -175,7 +240,7 @@
                 </div>
                 <div class="pull-left info">
                     <p>Internet Health</p>
-                    <span class="label label-success"><i class="fa fa-circle"></i> Active</span>
+                    <span id="sidebar-status-badge" class="label label-default"><i class="fa fa-circle"></i> Loading...</span>
                 </div>
             </div>
             <ul class="sidebar-menu" data-widget="tree">
@@ -199,15 +264,21 @@
         <section class="content-header" style="padding-bottom: 15px;">
             <h1 style="margin: 0; font-size: 24px;">
                 Internet Health Check
-                <small style="opacity: 0.85; font-size: 14px;">Live WAN Link, DNS Chain & 72h Uptime</small>
+                <small id="header-subtitle" style="opacity: 0.85; font-size: 14px;">Live WAN Link, DNS Chain &amp; 72h Uptime</small>
             </h1>
         </section>
 
         <section class="content">
-            <!-- Top Metric Cards (Pi-hole Native AdminLTE small-box) -->
+            <!-- Fetch Error Callout (hidden unless status.json fails to load) -->
+            <div id="fetch-error-banner" class="callout callout-danger" style="display: none;">
+                <h4 style="margin-top: 0;"><i class="fa fa-exclamation-circle"></i> Unable to Load Telemetry</h4>
+                <p id="fetch-error-msg" style="margin-bottom: 0;">Could not fetch status.json from the Pi-hole web server. Retrying automatically...</p>
+            </div>
+
+            <!-- Top Metric Cards (Pi-hole Native AdminLTE small-box, starts gray until hydrated) -->
             <div class="row" style="margin-bottom: 5px;">
                 <div class="col-lg-3 col-xs-6">
-                    <div class="small-box bg-green no-user-select" id="box-pihole-lat">
+                    <div class="small-box bg-gray no-user-select" id="box-pihole-lat">
                         <div class="inner">
                             <p style="margin: 0 0 4px 0; font-weight: 600;">Pi-hole Hop</p>
                             <h3 style="margin: 0; font-weight: bold; font-size: 32px;"><span id="metric-pihole-lat">--</span></h3>
@@ -216,40 +287,40 @@
                             <i class="fas fa-server"></i>
                         </div>
                         <div class="small-box-footer" id="footer-pihole-lat">
-                            <span id="sub-pihole-lat">Local DNS Hop</span>
+                            <span id="sub-pihole-lat">Initializing...</span>
                         </div>
                     </div>
                 </div>
                 <div class="col-lg-3 col-xs-6">
-                    <div class="small-box bg-green no-user-select" id="box-upstream-lat">
+                    <div class="small-box bg-gray no-user-select" id="box-upstream-lat">
                         <div class="inner">
-                            <p style="margin: 0 0 4px 0; font-weight: 600;">Upstream (DoH)</p>
+                            <p style="margin: 0 0 4px 0; font-weight: 600;">Upstream DNS</p>
                             <h3 style="margin: 0; font-weight: bold; font-size: 32px;"><span id="metric-upstream-lat">--</span></h3>
                         </div>
                         <div class="icon">
                             <i class="fas fa-cloud"></i>
                         </div>
                         <div class="small-box-footer" id="footer-upstream-lat">
-                            <span id="sub-upstream-lat">Cloudflare + Quad9</span>
+                            <span id="sub-upstream-lat">Initializing...</span>
                         </div>
                     </div>
                 </div>
                 <div class="col-lg-3 col-xs-6">
-                    <div class="small-box bg-green no-user-select" id="box-loss">
+                    <div class="small-box bg-gray no-user-select" id="box-loss">
                         <div class="inner">
                             <p style="margin: 0 0 4px 0; font-weight: 600;">Packet Loss</p>
-                            <h3 style="margin: 0; font-weight: bold; font-size: 32px;"><span id="metric-loss">0.0%</span></h3>
+                            <h3 style="margin: 0; font-weight: bold; font-size: 32px;"><span id="metric-loss">--</span></h3>
                         </div>
                         <div class="icon">
                             <i class="fas fa-network-wired"></i>
                         </div>
                         <div class="small-box-footer" id="footer-loss">
-                            <span id="sub-loss">ICMP Ping (1.1.1.1)</span>
+                            <span id="sub-loss">Initializing...</span>
                         </div>
                     </div>
                 </div>
                 <div class="col-lg-3 col-xs-6">
-                    <div class="small-box bg-green no-user-select" id="box-sla">
+                    <div class="small-box bg-gray no-user-select" id="box-sla">
                         <div class="inner">
                             <p style="margin: 0 0 4px 0; font-weight: 600;">72h SLA Score</p>
                             <h3 style="margin: 0; font-weight: bold; font-size: 32px;"><span id="metric-sla">--%</span></h3>
@@ -264,12 +335,12 @@
                 </div>
             </div>
 
-            <!-- Live DNS Chain Box (Live Status: Blue) -->
-            <div class="box box-info">
+            <!-- Live DNS Chain Box -->
+            <div class="box box-info" id="box-live-chain">
                 <div class="box-header with-border">
                     <h3 class="box-title"><i class="fas fa-network-wired"></i> Live DNS Chain Diagnostics</h3>
                     <div class="box-tools pull-right">
-                        <span id="header-last-updated" class="text-muted" style="font-size: 0.85em; margin-right: 10px;">Updated: just now</span>
+                        <span id="header-last-updated" class="text-muted" style="font-size: 0.85em; margin-right: 10px;">Updated: pending</span>
                         <span id="header-status-label" class="label label-default" style="font-size: 0.9em;">STATUS: Initializing...</span>
                     </div>
                 </div>
@@ -282,34 +353,36 @@
                         <div id="arrow-1" class="connector-arrow">&rarr;</div>
                         <div id="node-pihole" class="chain-node">
                             <div class="node-name">Pi-hole</div>
-                            <div id="node-pihole-desc" class="node-status-desc">127.0.0.1:53 (Pending)</div>
+                            <div id="node-pihole-desc" class="node-status-desc">Pending</div>
                         </div>
                         <div id="arrow-2" class="connector-arrow">&rarr;</div>
                         <div id="node-dnscrypt" class="chain-node">
                             <div class="node-name">dnscrypt-proxy</div>
-                            <div id="node-dnscrypt-desc" class="node-status-desc">127.0.0.1:5053 (Pending)</div>
+                            <div id="node-dnscrypt-desc" class="node-status-desc">Pending</div>
                         </div>
                         <div id="arrow-3" class="connector-arrow">&rarr;</div>
                         <div id="node-cloudflare" class="chain-node">
-                            <div class="node-name">Upstream (DoH)</div>
-                            <div id="node-cloudflare-desc" class="node-status-desc">Cloudflare + Quad9 (Pending)</div>
+                            <div class="node-name">Upstream DNS</div>
+                            <div id="node-cloudflare-desc" class="node-status-desc">Pending</div>
                         </div>
                     </div>
                 </div>
+                <div id="canary-status-footer" class="box-footer" style="display: none;">
+                    <div class="canary-strip" id="canary-strip-content"></div>
+                </div>
             </div>
 
-            <!-- 72h Uptime Grid Box in Chronological Order (Historical) -->
+            <!-- 72h Uptime Grid Box in Chronological Order -->
             <div class="box box-default">
                 <div class="box-header with-border">
-                    <h3 class="box-title"><i class="fas fa-history"></i> Historical Uptime (Last 72 Hours)</h3>
+                    <h3 class="box-title"><i class="fas fa-history"></i> Historical Quality (Last 72 Hours)</h3>
                     <div class="box-tools pull-right">
                         <span id="grid-uptime-pct" class="label label-default" style="font-size: 0.9em;">SLA: --%</span>
                     </div>
                 </div>
                 <div class="box-body">
-                    <!-- Hour Markers Header -->
                     <div class="time-header-row">
-                        <div style="display: flex; flex-grow: 1; justify-content: space-between; font-family: monospace; font-size: 11px; opacity: 0.7;">
+                        <div class="time-header-scale">
                             <span>00:00</span>
                             <span>04:00</span>
                             <span>08:00</span>
@@ -321,24 +394,32 @@
                     </div>
 
                     <div class="grid-row">
-                        <div class="row-label">2 Days Ago</div>
+                        <div class="row-label" id="label-2daysago">2 Days Ago<span class="row-date"></span></div>
                         <div class="row-cells" id="row-2daysago"></div>
                     </div>
                     <div class="grid-row">
-                        <div class="row-label">Yesterday</div>
+                        <div class="row-label" id="label-yesterday">Yesterday<span class="row-date"></span></div>
                         <div class="row-cells" id="row-yesterday"></div>
                     </div>
                     <div class="grid-row">
-                        <div class="row-label">Today</div>
+                        <div class="row-label" id="label-today">Today<span class="row-date"></span></div>
                         <div class="row-cells" id="row-today"></div>
                     </div>
+                </div>
+                <div class="box-footer heatmap-legend">
+                    <span class="legend-item"><span class="legend-swatch hour-ok"></span> Operational</span>
+                    <span class="legend-item"><span class="legend-swatch hour-warning"></span> Degraded</span>
+                    <span class="legend-item"><span class="legend-swatch hour-danger"></span> Outage (Ongoing)</span>
+                    <span class="legend-item"><span class="legend-swatch hour-danger-recovered"></span> Outage &rarr; Recovered</span>
+                    <span class="legend-item"><span class="legend-swatch hour-warning-recovered"></span> Degraded &rarr; Recovered</span>
+                    <span class="legend-item"><span class="legend-swatch hour-inactive"></span> Pending / No Data</span>
                 </div>
             </div>
 
             <!-- Incidents Box -->
             <div class="box box-default">
                 <div class="box-header with-border">
-                    <h3 class="box-title"><i class="fas fa-exclamation-triangle"></i> Recent Events & Outages Log</h3>
+                    <h3 class="box-title"><i class="fas fa-exclamation-triangle"></i> Recent Events &amp; Outages Log</h3>
                 </div>
                 <div class="box-body" id="incident-list">
                     <div class="text-center text-muted" style="padding: 10px;">
@@ -349,7 +430,7 @@
         </section>
     </div>
 
-    <!-- Main Footer (required by AdminLTE for correct layout height calculation) -->
+    <!-- Main Footer -->
     <footer class="main-footer">
         <div class="text-center">
             <a href="https://github.com/psinx/InternetHealthCheck" target="_blank" rel="noopener noreferrer">
@@ -360,10 +441,8 @@
     </footer>
 </div>
 
-<!-- jQuery is required before AdminLTE (AdminLTE uses $.fn for layout calculations) -->
 <script src="/admin/vendor/jquery/jquery.min.js"></script>
-<!-- AdminLTE layout engine (handles sidebar/content-wrapper height) -->
 <script src="/admin/vendor/adminLTE/adminlte.min.js"></script>
-<script src="/app.js?v=3.1"></script>
+<script src="/app.js?v=3.2"></script>
 </body>
 </html>
