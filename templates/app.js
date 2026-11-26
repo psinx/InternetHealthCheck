@@ -97,7 +97,7 @@
         const cfOk = isOk ? true : (hourData.cloudflare !== false);
 
         const badgeClass = isOk ? 'label label-success' : (hourData.status === 'DANGER' ? 'label label-danger' : (hourData.status === 'WARNING' ? 'label label-warning' : 'label label-default'));
-        const badgeText = isOk ? '100% Operational' : (hourData.status === 'DANGER' ? 'Outage' : escapeHTML(hourData.status));
+        const badgeText = isOk ? '100% Operational' : (hourData.status === 'DANGER' ? 'Outage' : (hourData.status === 'WARNING' ? 'Degraded' : escapeHTML(hourData.status)));
 
         const piStyle = piOk ? 'color: #00a65a;' : 'color: #dd4b39;';
         const dnsStyle = dnsOk ? 'color: #00a65a;' : 'color: #dd4b39;';
@@ -126,7 +126,8 @@
             const ifaceText = escapeHTML(hourData.iface ? hourData.iface : 'eth0, wlan0');
             html += '<div style="font-size: 11px; color: #f39c12; margin-top: 4px;">Affected Interface(s): <strong>' + ifaceText + '</strong></div>';
             if (hourData.earliest_issue) {
-                html += '<div style="font-size: 11px; color: #b8c7ce; margin-top: 2px;">First issue at <strong>' + escapeHTML(hourData.earliest_issue) + '</strong></div>';
+                const issueLabel = (hourData.status === 'WARNING') ? 'Degradation / Event at' : 'First issue at';
+                html += '<div style="font-size: 11px; color: #b8c7ce; margin-top: 2px;">' + issueLabel + ' <strong>' + escapeHTML(hourData.earliest_issue) + '</strong></div>';
             }
         } else {
             html += '<div style="font-size: 11px; color: #b8c7ce; margin-top: 4px;">Tested Interfaces: <strong>eth0, wlan0</strong></div>';
@@ -208,25 +209,35 @@
         }
 
         let activeStatus = (data.status === 'Operational' || data.status === 'Healthy') ? 'Healthy' : (data.status || 'Healthy');
+        let degReason = '';
         if (data.interfaces) {
             const ethOk = !data.interfaces.eth0 || !data.interfaces.eth0.exists || (data.interfaces.eth0.connectivity === 'OK' && data.interfaces.eth0.dns_ok !== false);
             const wlanOk = !data.interfaces.wlan0 || !data.interfaces.wlan0.exists || (data.interfaces.wlan0.connectivity === 'OK');
-            activeStatus = (ethOk && wlanOk) ? 'Healthy' : 'Degraded';
+            const anyDegraded = (data.interfaces.eth0 && data.interfaces.eth0.degraded) || (data.interfaces.wlan0 && data.interfaces.wlan0.degraded);
+            if (data.interfaces.eth0 && data.interfaces.eth0.degradation_reason) degReason = data.interfaces.eth0.degradation_reason;
+            else if (data.interfaces.wlan0 && data.interfaces.wlan0.degradation_reason) degReason = data.interfaces.wlan0.degradation_reason;
+
             if (data.interfaces.eth0 && data.interfaces.eth0.connectivity === 'DOWN' && 
                 (!data.interfaces.wlan0 || !data.interfaces.wlan0.exists || data.interfaces.wlan0.connectivity === 'DOWN')) {
                 activeStatus = 'Outage';
+            } else if (!ethOk || !wlanOk || anyDegraded || data.status === 'Degraded') {
+                activeStatus = 'Degraded';
+            } else {
+                activeStatus = 'Healthy';
             }
         }
         const headerLabel = document.getElementById('header-status-label');
         if (headerLabel) {
             if (activeStatus === 'Healthy') {
                 headerLabel.className = 'label label-success';
+                headerLabel.textContent = 'STATUS: Healthy';
             } else if (activeStatus === 'Degraded' || activeStatus === 'Partial Outage' || activeStatus === 'DNS Issues') {
                 headerLabel.className = 'label label-warning';
+                headerLabel.textContent = degReason ? ('STATUS: Degraded (' + degReason + ')') : 'STATUS: Degraded';
             } else {
                 headerLabel.className = 'label label-danger';
+                headerLabel.textContent = 'STATUS: ' + activeStatus;
             }
-            headerLabel.textContent = 'STATUS: ' + activeStatus;
         }
 
         let activeIface = null;
@@ -288,12 +299,12 @@
             const isConnOk = (activeIface.connectivity === 'OK');
             const upstreamIp = (activeIface && activeIface.upstream_ip) ? activeIface.upstream_ip : '1.1.1.3';
             
-            updateNodeState('node-pihole', 'node-pihole-desc', activeIface.pihole, '127.0.0.1:53');
-            updateNodeState('node-dnscrypt', 'node-dnscrypt-desc', activeIface.dnscrypt, '127.0.0.1:5053');
+            updateNodeState('node-pihole', 'node-pihole-desc', activeIface.pihole, '127.0.0.1:53', activeIface.latency_pihole, 150);
+            updateNodeState('node-dnscrypt', 'node-dnscrypt-desc', activeIface.dnscrypt, '127.0.0.1:5053', activeIface.latency_dnscrypt);
             
             // Cloudflare upstream fails if either cloudflare check failed OR internet ping is DOWN
             const cfOk = (activeIface.cloudflare && isConnOk);
-            updateNodeState('node-cloudflare', 'node-cloudflare-desc', cfOk, upstreamIp + ':53');
+            updateNodeState('node-cloudflare', 'node-cloudflare-desc', cfOk, upstreamIp + ':53', activeIface.latency_cloudflare, 200);
             
             updateArrowState('arrow-1', activeIface.pihole);
             updateArrowState('arrow-2', activeIface.dnscrypt);
@@ -330,15 +341,25 @@
         if (!iface || !iface.exists) { el.textContent = 'Inactive'; el.className = 'label label-default'; }
         else if (iface.connectivity === 'DOWN') { el.textContent = 'Offline'; el.className = 'label label-danger'; }
         else if (iface.dns_ok === false) { el.textContent = 'DNS Issue'; el.className = 'label label-warning'; }
+        else if (iface.degraded) { el.textContent = 'Degraded'; el.className = 'label label-warning'; }
         else { el.textContent = 'Online'; el.className = 'label label-success'; }
     }
 
-    function updateNodeState(nodeId, descId, isOk, portLabel) {
+    function updateNodeState(nodeId, descId, isOk, portLabel, latencyVal, warnThreshold) {
         const nodeEl = document.getElementById(nodeId);
         const descEl = document.getElementById(descId);
         if (!nodeEl || !descEl) return;
-        nodeEl.className = isOk ? 'chain-node node-ok' : 'chain-node node-fail';
-        descEl.textContent = portLabel + (isOk ? ' (OK)' : ' (FAIL)');
+        const isDegraded = isOk && (warnThreshold && latencyVal !== undefined && latencyVal >= warnThreshold);
+        if (!isOk) {
+            nodeEl.className = 'chain-node node-fail';
+            descEl.textContent = portLabel + ' (FAIL)';
+        } else if (isDegraded) {
+            nodeEl.className = 'chain-node node-warning';
+            descEl.textContent = portLabel + ' (SLOW)';
+        } else {
+            nodeEl.className = 'chain-node node-ok';
+            descEl.textContent = portLabel + ' (OK)';
+        }
     }
 
     function updateArrowState(arrowId, isOk) {

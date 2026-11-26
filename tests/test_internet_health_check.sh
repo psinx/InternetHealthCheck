@@ -803,6 +803,110 @@ assert h22['status'] == 'DANGER', f'Expected DANGER for eth0 DOWN, got {h22[\"st
     cleanup_test_env
 }
 
+test_25_latency_degradation_detection() {
+    echo "TEST 25: Latency degradation marks degraded: true and generates Warning status"
+    setup_test_env
+
+    local target_json="$TEST_HOME/status.json"
+    cat > /tmp/test_latency.sh << 'TESTEOF'
+#!/bin/bash
+HOME="$TEST_HOME"
+export HOME
+export RAM_STATE_FILE="$TEST_RAM_FILE"
+
+# Mock ip
+ip() {
+    echo "inet 192.168.1.50/24 scope global eth0"
+}
+
+# Mock ping with 0% loss, 10ms
+ping() {
+    echo "rtt min/avg/max/mdev = 9.0/10.0/11.0/0.5 ms"
+    echo "0% packet loss"
+    return 0
+}
+
+# Mock dig with high Pi-hole latency (180ms >= 150ms threshold)
+dig() {
+    if [[ "$*" =~ "@127.0.0.1" && "$*" =~ "-p 53" ]]; then
+        echo ";; Query time: 180 msec"
+        return 0
+    elif [[ "$*" =~ "@127.0.0.1" && "$*" =~ "-p 5053" ]]; then
+        echo ";; Query time: 20 msec"
+        return 0
+    else
+        echo ";; Query time: 25 msec"
+        return 0
+    fi
+}
+
+source "$SCRIPT_PATH"
+main --interfaces eth0 --dashboard "$TEST_HOME/status.json" --format log --log-file "$TEST_LOG_FILE"
+TESTEOF
+    chmod +x /tmp/test_latency.sh
+    SCRIPT_PATH="$SCRIPT_PATH" TEST_HOME="$TEST_HOME" TEST_RAM_FILE="$TEST_RAM_FILE" TEST_LOG_FILE="$TEST_LOG_FILE" bash /tmp/test_latency.sh >/dev/null 2>&1
+
+    if python3 -c "
+import json
+with open('$target_json') as f:
+    d = json.load(f)
+assert d['status'] == 'Degraded', f'Expected Degraded status, got {d[\"status\"]}'
+eth0 = d['interfaces']['eth0']
+assert eth0['degraded'] is True, f'Expected eth0 degraded=True, got {eth0[\"degraded\"]}'
+assert 'High Pi-hole latency' in eth0['degradation_reason'], f'Expected High Pi-hole latency reason, got {eth0[\"degradation_reason\"]}'
+"; then
+        assert_pass "High Pi-hole latency (180ms) triggers Degraded status and degraded=True"
+    else
+        assert_fail "High Pi-hole latency did not trigger Degraded status"
+    fi
+
+    rm -f /tmp/test_latency.sh
+    cleanup_test_env
+}
+
+test_26_apdex_sla_calculation() {
+    echo "TEST 26: Apdex SLA percentage calculation (half-credit for warning/degraded hours)"
+    setup_test_env
+
+    local target_json="$TEST_HOME/status.json"
+    local now_ts
+    now_ts=$(python3 -c "import time; print(int(time.time()))")
+    local prev_ts=$(( now_ts - 3600 ))
+    echo "$prev_ts,eth0,OK,true,true,true,true,250,20,30,0" > "$TEST_RAM_FILE"
+
+    cat > /tmp/test_apdex.sh << 'TESTEOF'
+#!/bin/bash
+HOME="$TEST_HOME"
+export HOME
+export RAM_STATE_FILE="$TEST_RAM_FILE"
+
+ip() { echo "inet 192.168.1.50/24 scope global eth0"; }
+ping() { echo "rtt min/avg/max/mdev = 9.0/10.0/11.0/0.5 ms"; echo "0% packet loss"; return 0; }
+dig() { echo ";; Query time: 10 msec"; return 0; }
+
+source "$SCRIPT_PATH"
+main --interfaces eth0 --dashboard "$TEST_HOME/status.json" --format log --log-file "$TEST_LOG_FILE"
+TESTEOF
+    chmod +x /tmp/test_apdex.sh
+    SCRIPT_PATH="$SCRIPT_PATH" TEST_HOME="$TEST_HOME" TEST_RAM_FILE="$TEST_RAM_FILE" TEST_LOG_FILE="$TEST_LOG_FILE" bash /tmp/test_apdex.sh >/dev/null 2>&1
+
+    if python3 -c "
+import json
+with open('$target_json') as f:
+    d = json.load(f)
+sla = float(d['sla_percentage'])
+assert sla < 100.0, f'Expected SLA < 100.0 due to degraded hour, got {sla}'
+assert sla > 50.0, f'Expected Apdex SLA with half-credit, got {sla}'
+"; then
+        assert_pass "Apdex SLA gives partial credit for degraded hours"
+    else
+        assert_fail "Apdex SLA calculation failed"
+    fi
+
+    rm -f /tmp/test_apdex.sh
+    cleanup_test_env
+}
+
 #=============================================================================
 # Main
 #=============================================================================
@@ -933,6 +1037,10 @@ main() {
     test_23_cli_flags
     echo ""
     test_24_disk_log_heatmap_danger_on_eth0_down
+    echo ""
+    test_25_latency_degradation_detection
+    echo ""
+    test_26_apdex_sla_calculation
     
     echo ""
     echo "=========================================="

@@ -308,12 +308,24 @@ main() {
         local iface_exists="true"
         [[ -z "$local_ip" ]] && iface_exists="false"
 
+        local is_iface_degraded=false
+        local iface_deg_reason=""
+        if [[ "$DNS_DEGRADED" == "true" ]]; then
+            is_iface_degraded=true
+            iface_deg_reason="$DNS_DEGRADED_REASON"
+        elif [[ "$CONNECTIVITY_DEGRADED" == "true" ]]; then
+            is_iface_degraded=true
+            iface_deg_reason="$CONNECTIVITY_DEGRADED_REASON"
+        fi
+
         local block
         block=$(cat << EOF
     "$iface": {
       "exists": $iface_exists,
       "connectivity": "$CONNECTIVITY_RESULT",
       "dns_ok": $DNS_OK_RESULT,
+      "degraded": $is_iface_degraded,
+      "degradation_reason": "$iface_deg_reason",
       "pihole": $PIHOLE_OK,
       "dnscrypt": $DNSCRYPT_OK,
       "cloudflare": $CLOUDFLARE_OK,
@@ -355,6 +367,12 @@ generate_status_json() {
     # Calculate overall system health based on current live interface connectivity
     local system_status="Healthy"
     if echo "$ifaces_json" | grep -q '"connectivity": "DOWN"' || echo "$ifaces_json" | grep -q '"dns_ok": false'; then
+        if echo "$ifaces_json" | grep -A6 '"eth0"' | grep -q '"connectivity": "DOWN"'; then
+            system_status="Outage"
+        else
+            system_status="Degraded"
+        fi
+    elif echo "$ifaces_json" | grep -q '"degraded": true'; then
         system_status="Degraded"
     fi
 
@@ -447,15 +465,20 @@ if os.path.exists(ram_file):
                     iface = parts[1]
                     conn = parts[2]
                     dns = parts[3]
-                    pihole_ok = (parts[5] == "true") if len(parts) > 5 else True
-                    dnscrypt_ok = (parts[6] == "true") if len(parts) > 6 else True
-                    cloudflare_ok = (parts[7] == "true") if len(parts) > 7 else (conn == "OK" and dns == "true")
+                    pihole_ok = (parts[4] == "true") if len(parts) > 4 else True
+                    dnscrypt_ok = (parts[5] == "true") if len(parts) > 5 else True
+                    cloudflare_ok = (parts[6] == "true") if len(parts) > 6 else (conn == "OK" and dns == "true")
+                    pi_lat = int(parts[7]) if len(parts) > 7 and parts[7].lstrip("-").isdigit() else 0
+                    dns_lat = int(parts[8]) if len(parts) > 8 and parts[8].lstrip("-").isdigit() else 0
+                    cf_lat = int(parts[9]) if len(parts) > 9 and parts[9].lstrip("-").isdigit() else 0
+                    loss = float(parts[10]) if len(parts) > 10 and parts[10].replace(".", "", 1).isdigit() else 0.0
 
                     days_diff = (today_date - dt.date()).days
                     if 0 <= days_diff < 3:
                         day_label = ["Today", "Yesterday", "2 Days Ago"][days_diff]
                         hour_idx = dt.hour
                         hours_nodes[day_label][hour_idx] = {"pi": pihole_ok, "dns": dnscrypt_ok, "cf": cloudflare_ok}
+                        is_degraded = (pi_lat >= 150 or cf_lat >= 200 or loss >= 5)
                         if conn == "DOWN" or dns == "false":
                             if iface == "wlan0":
                                 if hours_status[day_label][hour_idx] != "DANGER":
@@ -466,6 +489,14 @@ if os.path.exists(ram_file):
                                 hours_ifaces[day_label][hour_idx].add(iface)
                             if not hours_earliest[day_label][hour_idx]:
                                 hours_earliest[day_label][hour_idx] = dt.strftime("%Y-%m-%d %H:%M:%S")
+                        elif is_degraded:
+                            if hours_status[day_label][hour_idx] != "DANGER":
+                                hours_status[day_label][hour_idx] = "WARNING"
+                            if iface:
+                                hours_ifaces[day_label][hour_idx].add(iface)
+                            if not hours_earliest[day_label][hour_idx]:
+                                deg_txt = f"{pi_lat}ms DNS" if pi_lat >= 150 else (f"{cf_lat}ms Upstream" if cf_lat >= 200 else f"{loss:.0f}% Loss")
+                                hours_earliest[day_label][hour_idx] = dt.strftime("%Y-%m-%d %H:%M:%S") + " (" + deg_txt + ")"
                 except Exception:
                     pass
     except Exception:
@@ -501,7 +532,7 @@ for c_log in candidate_logs:
                             day_label = ["Today", "Yesterday", "2 Days Ago"][days_diff]
                             hour_idx = dt.hour
 
-                            if "DOWN" in line or "Fail" in line:
+                            if "DOWN" in line or "Fail" in line or "Warning:" in line:
                                 if "[eth0]" in line: hours_ifaces[day_label][hour_idx].add("eth0")
                                 if "[wlan0]" in line: hours_ifaces[day_label][hour_idx].add("wlan0")
 
@@ -509,7 +540,7 @@ for c_log in candidate_logs:
                                 hours_status[day_label][hour_idx] = "DANGER"
                                 if not hours_earliest[day_label][hour_idx]:
                                     hours_earliest[day_label][hour_idx] = time_str
-                            elif ("DOWN" in line or "Fail" in line) and hours_status[day_label][hour_idx] != "DANGER":
+                            elif ("DOWN" in line or "Fail" in line or "Warning:" in line) and hours_status[day_label][hour_idx] != "DANGER":
                                 hours_status[day_label][hour_idx] = "WARNING"
                                 if not hours_earliest[day_label][hour_idx]:
                                     hours_earliest[day_label][hour_idx] = time_str
@@ -527,7 +558,7 @@ for c_log in candidate_logs:
         for line in reversed(lines):
             if len(incidents) >= 10:
                 break
-            if "[INTERNET-HEALTH-CHECK]" in line and "DOWN" in line:
+            if "[INTERNET-HEALTH-CHECK]" in line and ("DOWN" in line or "Warning:" in line):
                 parts = line.strip().split()
                 if len(parts) >= 2:
                     time_str = parts[0] + " " + parts[1]
@@ -539,12 +570,21 @@ for c_log in candidate_logs:
                             key = f"{time_str}_{iface}"
                             if key not in seen_events:
                                 seen_events.add(key)
-                                is_total_outage = (iface == "eth0" or "CONNECTIVITY OUTAGE" in line)
+                                is_total_outage = (iface == "eth0" and "DOWN" in line) or "CONNECTIVITY OUTAGE" in line
+                                is_warning = "Warning:" in line or (iface == "wlan0" and "DOWN" in line)
+                                badge = "Outage" if is_total_outage and not is_warning else "Warning"
+                                if "Warning:" in line:
+                                    reason_part = line.split("Warning: ")[1].strip() if "Warning: " in line else "Degraded"
+                                    desc = f"Degraded performance - {reason_part}"
+                                elif is_total_outage:
+                                    desc = "DOWN - CONNECTIVITY OUTAGE detected"
+                                else:
+                                    desc = f"Interface link down ({iface})"
                                 incidents.append({
-                                    "type": "outage" if is_total_outage else "warning",
-                                    "badge": "Outage" if is_total_outage else "Warning",
+                                    "type": "outage" if badge == "Outage" else "warning",
+                                    "badge": badge,
                                     "timestamp": f"{time_str} ({iface})",
-                                    "description": "DOWN - CONNECTIVITY OUTAGE detected" if is_total_outage else f"Interface link down ({iface})",
+                                    "description": desc,
                                     "duration": ""
                                 })
                     except Exception:
@@ -561,32 +601,51 @@ if len(incidents) < 10 and os.path.exists(ram_file):
             if len(incidents) >= 10:
                 break
             parts = line.strip().split(",")
-            if len(parts) >= 4 and (parts[2] == "DOWN" or parts[3] == "false"):
+            if len(parts) >= 4:
                 try:
                     ts = float(parts[0])
                     if (now_ts - ts) <= max_age_seconds:
                         dt = datetime.fromtimestamp(ts)
                         ts_str = dt.strftime("%Y-%m-%d %H:%M:%S")
                         iface = parts[1] if len(parts) > 1 else "wlan0"
-                        key = f"{ts_str}_{iface}"
-                        if key not in seen_events:
-                            seen_events.add(key)
-                            is_total_outage = (iface == "eth0" or parts[2] == "DOWN")
-                            incidents.append({
-                                "type": "outage" if is_total_outage else "warning",
-                                "badge": "Outage" if is_total_outage else "Warning",
-                                "timestamp": f"{ts_str} ({iface})",
-                                "description": "DOWN - CONNECTIVITY OUTAGE detected" if is_total_outage else f"Interface link down ({iface})",
-                                "duration": ""
-                            })
+                        conn = parts[2]
+                        dns = parts[3]
+                        pi_lat = int(parts[7]) if len(parts) > 7 and parts[7].lstrip("-").isdigit() else 0
+                        cf_lat = int(parts[9]) if len(parts) > 9 and parts[9].lstrip("-").isdigit() else 0
+                        loss = float(parts[10]) if len(parts) > 10 and parts[10].replace(".", "", 1).isdigit() else 0.0
+                        is_deg = (pi_lat >= 150 or cf_lat >= 200 or loss >= 5)
+
+                        if conn == "DOWN" or dns == "false" or is_deg:
+                            key = f"{ts_str}_{iface}"
+                            if key not in seen_events:
+                                seen_events.add(key)
+                                is_total_outage = (iface == "eth0" and conn == "DOWN")
+                                is_warning = is_deg or (iface == "wlan0") or (dns == "false" and conn == "OK")
+                                badge = "Outage" if is_total_outage and not is_warning else "Warning"
+                                if is_deg:
+                                    deg_txt = f"{pi_lat}ms DNS" if pi_lat >= 150 else (f"{cf_lat}ms Upstream" if cf_lat >= 200 else f"{loss:.0f}% Loss")
+                                    desc = f"Degraded performance ({deg_txt})"
+                                elif is_total_outage:
+                                    desc = "DOWN - CONNECTIVITY OUTAGE detected"
+                                else:
+                                    desc = f"Interface link down ({iface})"
+                                incidents.append({
+                                    "type": "outage" if badge == "Outage" else "warning",
+                                    "badge": badge,
+                                    "timestamp": f"{ts_str} ({iface})",
+                                    "description": desc,
+                                    "duration": ""
+                                })
                 except Exception:
                     pass
     except Exception:
         pass
 
-# Calculate 72h SLA Percentage
+# Calculate 72h SLA Percentage using Apdex formula:
+# (healthy_hours + 0.5 * warning_hours) / active_hours * 100.0
 active_hours = 0
 healthy_hours = 0
+warning_hours = 0
 for label in ["2 Days Ago", "Yesterday", "Today"]:
     for h in range(24):
         st = hours_status[label][h]
@@ -594,8 +653,10 @@ for label in ["2 Days Ago", "Yesterday", "Today"]:
             active_hours += 1
             if st == "OK":
                 healthy_hours += 1
+            elif st == "WARNING":
+                warning_hours += 1
 
-sla_pct = round((healthy_hours / active_hours * 100.0), 2) if active_hours > 0 else 100.0
+sla_pct = round(((healthy_hours + 0.5 * warning_hours) / active_hours * 100.0), 2) if active_hours > 0 else 100.0
 
 # Format History Result
 history_res = []

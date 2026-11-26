@@ -104,6 +104,8 @@ check_connectivity() {
     fi
     local exit_status=$?
     
+    CONNECTIVITY_DEGRADED=false
+    CONNECTIVITY_DEGRADED_REASON=""
     if (( exit_status == 0 )); then
         CONNECTIVITY_RESULT="OK"
         # Parse average latency (format: rtt min/avg/max/mdev = 11.23/12.45/...)
@@ -117,10 +119,19 @@ check_connectivity() {
         local loss
         loss=$(echo "$ping_out" | grep -oE '[0-9]+% packet loss' | cut -d% -f1)
         CONNECTIVITY_LOSS=${loss:-0}
+
+        local loss_warn="${PACKET_LOSS_WARN_PCT:-5}"
+        if (( CONNECTIVITY_LOSS >= loss_warn )); then
+            CONNECTIVITY_DEGRADED=true
+            CONNECTIVITY_DEGRADED_REASON="Packet loss (${CONNECTIVITY_LOSS}% >= ${loss_warn}%)"
+            log "[$interface] Warning: Connectivity degraded - ${CONNECTIVITY_DEGRADED_REASON}"
+        fi
     else
         CONNECTIVITY_RESULT="DOWN"
         CONNECTIVITY_LATENCY=-1
         CONNECTIVITY_LOSS=100
+        CONNECTIVITY_DEGRADED=false
+        CONNECTIVITY_DEGRADED_REASON="Total outage"
         log "[$interface] Test: Fail during Ping - $PING_TARGET did not respond"
     fi
 }
@@ -195,8 +206,22 @@ check_dns_chain() {
     fi
     
     # Aggregate DNS status
+    DNS_DEGRADED=false
+    DNS_DEGRADED_REASON=""
+    local pi_warn="${PIHOLE_LATENCY_WARN_MS:-150}"
+    local up_warn="${UPSTREAM_LATENCY_WARN_MS:-200}"
+
     if [[ "$PIHOLE_OK" == "true" && "$CLOUDFLARE_OK" == "true" ]] && [[ "$skip_dc" == "true" || "$DNSCRYPT_OK" == "true" ]]; then
         DNS_OK_RESULT="true"
+        if (( PIHOLE_LATENCY >= pi_warn )); then
+            DNS_DEGRADED=true
+            DNS_DEGRADED_REASON="High Pi-hole latency (${PIHOLE_LATENCY}ms >= ${pi_warn}ms)"
+            log "[$interface] Warning: DNS degraded - ${DNS_DEGRADED_REASON}"
+        elif (( CLOUDFLARE_LATENCY >= up_warn )); then
+            DNS_DEGRADED=true
+            DNS_DEGRADED_REASON="High Upstream latency (${CLOUDFLARE_LATENCY}ms >= ${up_warn}ms)"
+            log "[$interface] Warning: DNS degraded - ${DNS_DEGRADED_REASON}"
+        fi
     else
         DNS_OK_RESULT="false"
         
