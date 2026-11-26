@@ -98,10 +98,10 @@ discover_interfaces() {
             echo "en0"
         fi
     elif command -v ip >/dev/null 2>&1; then
-        # On Linux, list physical interfaces excluding local loops, bridges, and docker
-        ip -o link show 2>/dev/null | awk -F': ' '{print $2}' | grep -vE 'lo|docker|veth|br-' || echo "eth0"
+        # On Linux, list physical interfaces excluding local loops, bridges, docker, and VPN tunnels
+        ip -o link show 2>/dev/null | awk -F': ' '{print $2}' | cut -d'@' -f1 | grep -vE 'lo|docker|veth|br-|tailscale|tun|tap|wg' || echo "eth0"
     elif command -v ifconfig >/dev/null 2>&1; then
-        ifconfig -s 2>/dev/null | awk '{print $1}' | grep -vE 'Iface|lo|docker|veth|br-' || echo "eth0"
+        ifconfig -s 2>/dev/null | awk '{print $1}' | cut -d'@' -f1 | grep -vE 'Iface|lo|docker|veth|br-|tailscale|tun|tap|wg' || echo "eth0"
     else
         echo "eth0"
     fi
