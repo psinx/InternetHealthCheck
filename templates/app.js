@@ -394,7 +394,7 @@
         const cStatus = canary.status || 'Unknown';
         const statusType = cStatus === 'Healthy' ? 'success' : (cStatus === 'Degraded' ? 'warning' : 'danger');
         if (titleEl) {
-            titleEl.textContent = 'LAN Canary (' + (cMeta.host || 'Remote Probe') + ')';
+            titleEl.textContent = 'LAN Canary';
         }
         box.className = 'box box-' + statusType;
         if (statusLabel) {
