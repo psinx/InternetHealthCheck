@@ -46,23 +46,36 @@
     }
 
     let lastDataTimestamp = null;
+    let lastCanaryTimestamp = null;
     let currentMetadata = {};
     let lastDashboardData = null;
     let lastCanaryData = null;
 
     function updateFreshnessTicker() {
         const el = document.getElementById('header-last-updated');
-        if (!el || !lastDataTimestamp) return;
-        const age = formatRelativeAge(lastDataTimestamp);
-        if (age.stale) {
-            el.className = 'label label-warning';
-            el.textContent = 'Updated: ' + age.text + ' (Stale)';
-        } else {
-            el.className = 'text-muted';
-            el.textContent = 'Updated: ' + age.text;
+        if (el && lastDataTimestamp) {
+            const age = formatRelativeAge(lastDataTimestamp);
+            if (age.stale) {
+                el.className = 'label label-warning';
+                el.textContent = 'Updated: ' + age.text + ' (Stale)';
+            } else {
+                el.className = 'text-muted';
+                el.textContent = 'Updated: ' + age.text;
+            }
+            if (lastDashboardData) {
+                renderRemediationGuide(lastDashboardData, lastCanaryData);
+            }
         }
-        if (lastDashboardData) {
-            renderRemediationGuide(lastDashboardData, lastCanaryData);
+        const canaryEl = document.getElementById('canary-last-updated');
+        if (canaryEl && lastCanaryTimestamp) {
+            const cAge = formatRelativeAge(lastCanaryTimestamp);
+            if (cAge.stale) {
+                canaryEl.className = 'label label-warning';
+                canaryEl.textContent = 'Updated: ' + cAge.text + ' (Stale)';
+            } else {
+                canaryEl.className = 'text-muted';
+                canaryEl.textContent = 'Updated: ' + cAge.text;
+            }
         }
     }
 
@@ -344,9 +357,10 @@
     }
 
     async function refreshCanary() {
-        const footer = document.getElementById('canary-status-footer');
-        const content = document.getElementById('canary-strip-content');
-        if (!footer || !content) return;
+        const box = document.getElementById('box-lan-canary');
+        const titleEl = document.getElementById('canary-box-title');
+        const statusLabel = document.getElementById('canary-status-label');
+        if (!box) return;
 
         let canary = null;
         for (const path of ['/canary_status.json', 'canary_status.json']) {
@@ -361,42 +375,101 @@
 
         if (!canary || !canary.interfaces) {
             lastCanaryData = null;
-            footer.style.display = 'none';
+            lastCanaryTimestamp = null;
+            box.style.display = 'none';
             if (lastDashboardData) renderRemediationGuide(lastDashboardData, null);
             return;
         }
         lastCanaryData = canary;
-        if (lastDashboardData) renderRemediationGuide(lastDashboardData, canary);
 
-        const cMeta = canary.metadata || {};
-        const cIfaces = Object.entries(canary.interfaces).filter(([, d]) => d.state !== 'unused' && d.admin_up !== false);
-        const cActive = (cIfaces.find(([, d]) => d.connectivity === 'OK') || cIfaces[0] || [null, null])[1];
-        const cStatus = canary.status || 'Unknown';
-        const badgeCls = cStatus === 'Healthy' ? 'label-success' : (cStatus === 'Degraded' ? 'label-warning' : 'label-danger');
-
-        let ageHtml = '';
         if (canary.timestamp) {
             const parsed = new Date(canary.timestamp);
-            if (!isNaN(parsed.getTime())) {
-                const age = formatRelativeAge(parsed.getTime());
-                ageHtml = age.stale
-                    ? '<span class="label label-warning">' + escapeHTML(age.text) + ' (Stale)</span>'
-                    : '<span class="text-muted">' + escapeHTML(age.text) + '</span>';
+            lastCanaryTimestamp = !isNaN(parsed.getTime()) ? parsed.getTime() : null;
+        } else {
+            lastCanaryTimestamp = null;
+        }
+        updateFreshnessTicker();
+
+        const cMeta = canary.metadata || {};
+        const cStatus = canary.status || 'Unknown';
+        const statusType = cStatus === 'Healthy' ? 'success' : (cStatus === 'Degraded' ? 'warning' : 'danger');
+        if (titleEl) {
+            titleEl.textContent = 'LAN Canary (' + (cMeta.host || 'Remote Probe') + ')';
+        }
+        box.className = 'box box-' + statusType;
+        if (statusLabel) {
+            statusLabel.className = 'label label-' + statusType;
+            statusLabel.textContent = 'STATUS: ' + cStatus;
+        }
+
+        const cIfaces = Object.entries(canary.interfaces).filter(([, d]) => d && d.state !== 'unused' && d.admin_up !== false);
+        const activePair = cIfaces.find(([, d]) => d.connectivity === 'OK') || cIfaces[0] || [null, null];
+        const [activeName, cActive] = activePair;
+        const cThresholds = (cMeta && cMeta.thresholds) || { pihole_ms: 150, upstream_ms: 200, loss_pct: 5 };
+
+        // Card 1: Canary Host
+        const hostEl = document.getElementById('canary-node-host');
+        const hostDescEl = document.getElementById('canary-node-host-desc');
+        if (hostEl && hostDescEl) {
+            const hostTarget = (activeName || 'link') + (cActive && cActive.ip ? (' \u00b7 ' + cActive.ip) : '');
+            const hostTargetSpan = '<span class="node-target" title="' + escapeHTML(hostTarget) + '">' + escapeHTML(hostTarget) + '</span>';
+            if (cActive && cActive.connectivity === 'OK') {
+                hostEl.className = 'chain-node node-ok';
+                hostDescEl.innerHTML = hostTargetSpan + '<span class="node-result text-green"><i class="fa fa-check-circle"></i> Online</span>';
+            } else {
+                hostEl.className = 'chain-node node-fail';
+                hostDescEl.innerHTML = hostTargetSpan + '<span class="node-result text-red"><i class="fa fa-times-circle"></i> Offline</span>';
             }
         }
 
-        const piLat = cActive && cActive.latency_pihole >= 0 ? cActive.latency_pihole + 'ms' : 'FAIL';
-        const upLat = cActive && cActive.latency_cloudflare >= 0 ? cActive.latency_cloudflare + 'ms' : 'FAIL';
-        const hostName = escapeHTML(cMeta.host || 'LAN Canary');
-        const targetDns = escapeHTML(cMeta.pihole_target || 'Pi-hole');
+        // Card 2: DNS via Pi-hole
+        updateNodeState(
+            'canary-node-pihole',
+            'canary-node-pihole-desc',
+            cActive ? cActive.pihole : null,
+            cMeta.pihole_target || 'Pi-hole',
+            cActive ? cActive.latency_pihole : -1,
+            cThresholds.pihole_ms,
+            'Untested'
+        );
 
-        content.innerHTML =
-            '<span><i class="fas fa-satellite-dish text-aqua"></i> <strong>LAN Canary (' + hostName + '):</strong> ' +
-            '<span class="label ' + badgeCls + '">' + escapeHTML(cStatus) + '</span> ' +
-            '&middot; DNS via <code>' + targetDns + '</code>: <strong>' + escapeHTML(piLat) + '</strong> ' +
-            '&middot; Upstream: <strong>' + escapeHTML(upLat) + '</strong></span>' +
-            '<span>' + ageHtml + '</span>';
-        footer.style.display = 'block';
+        // Card 3: Upstream DNS
+        const upTarget = cMeta.upstream_ip || (cActive && cActive.upstream_ip) || '1.1.1.1';
+        updateNodeState(
+            'canary-node-upstream',
+            'canary-node-upstream-desc',
+            cActive ? cActive.cloudflare : null,
+            upTarget,
+            cActive ? cActive.latency_cloudflare : -1,
+            cThresholds.upstream_ms,
+            'Untested'
+        );
+
+        // Card 4: WAN Ping
+        const wanEl = document.getElementById('canary-node-wan');
+        const wanDescEl = document.getElementById('canary-node-wan-desc');
+        if (wanEl && wanDescEl) {
+            const lossVal = cActive ? cActive.packet_loss : null;
+            const lossMissing = lossVal === null || lossVal === undefined;
+            const pingMs = (cActive && cActive.latency_ping >= 0) ? Math.round(cActive.latency_ping) : -1;
+            const wanTarget = lossMissing ? '1.1.1.1' : (Number(lossVal).toFixed(1) + '% loss');
+            const wanTargetSpan = '<span class="node-target" title="' + escapeHTML(wanTarget) + '">' + escapeHTML(wanTarget) + '</span>';
+            const pingPrefix = pingMs >= 0 ? (pingMs + 'ms &middot; ') : '';
+
+            if (!cActive || cActive.connectivity !== 'OK') {
+                wanEl.className = 'chain-node node-fail';
+                wanDescEl.innerHTML = wanTargetSpan + '<span class="node-result text-red"><i class="fa fa-times-circle"></i> FAIL</span>';
+            } else if (!lossMissing && Number(lossVal) >= cThresholds.loss_pct) {
+                wanEl.className = 'chain-node node-warning';
+                wanDescEl.innerHTML = wanTargetSpan + '<span class="node-result text-yellow"><i class="fa fa-exclamation-triangle"></i> ' + pingPrefix + 'LOSS</span>';
+            } else {
+                wanEl.className = 'chain-node node-ok';
+                wanDescEl.innerHTML = wanTargetSpan + '<span class="node-result text-green"><i class="fa fa-check-circle"></i> ' + pingPrefix + 'OK</span>';
+            }
+        }
+
+        box.style.display = 'block';
+        if (lastDashboardData) renderRemediationGuide(lastDashboardData, canary);
     }
 
     function updateSmallBox(boxId, metricId, subId, valText, subText, color) {
