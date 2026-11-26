@@ -208,3 +208,21 @@ def test_disk_and_ram_dedup_and_non_eth0_recovery(tmp_path):
     assert h15["recovered_at"] == "15:20:00"
     assert h15["pihole"] is False
     assert len(payload["incidents"]) == 1
+
+
+def test_current_hour_metadata(tmp_path):
+    now_dt = datetime(2026, 4, 20, 15, 22, 0)
+    ram = tmp_path / "ram.csv"
+    log_file = tmp_path / "hc.log"
+    ram.write_text(f"{int(now_dt.timestamp()) - 60},en0,OK,true,true,true,true,12,20,25,0,true,,\n")
+
+    payload = telemetry.build_telemetry_payload(
+        make_live({"en0": healthy_iface()}), str(ram), str(log_file), now_dt=now_dt
+    )
+    h15 = payload["history"][2]["hours"][15]
+    h14 = payload["history"][2]["hours"][14]
+    y15 = payload["history"][1]["hours"][15]
+    assert h15["is_current"] is True
+    assert h15["elapsed_minutes"] == 22
+    assert h14["is_current"] is False
+    assert y15["is_current"] is False

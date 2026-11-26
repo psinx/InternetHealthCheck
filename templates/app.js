@@ -9,6 +9,25 @@
         return start + ' - ' + end;
     }
 
+    function getQuarterFillPct(minutes) {
+        const m = Math.max(0, Math.min(59, Number(minutes) || 0));
+        if (m < 15) return 25;
+        if (m < 30) return 50;
+        if (m < 45) return 75;
+        return 90;
+    }
+
+    function getCurrentHourFillPct(rowLabel, hourData) {
+        if (!hourData || hourData.status === 'INACTIVE') return null;
+        const isCurrent = hourData.is_current === true ||
+            (hourData.is_current === undefined && rowLabel === 'Today' && hourData.hour === new Date().getHours());
+        if (!isCurrent) return null;
+        const mins = typeof hourData.elapsed_minutes === 'number'
+            ? hourData.elapsed_minutes
+            : new Date().getMinutes();
+        return getQuarterFillPct(mins);
+    }
+
     function getDisplayDate(label, dateStr) {
         if (dateStr) return dateStr;
         const now = new Date();
@@ -168,6 +187,7 @@
     function renderMiniChainHtml(hourData, dayLabel, timeRange, isResolved) {
         const safeDay = escapeHTML(dayLabel);
         const safeTime = escapeHTML(timeRange);
+        const headerTime = safeDay + ' ' + safeTime + (hourData && hourData.is_current === true && hourData.status !== 'INACTIVE' ? ' (In Progress)' : '');
 
         if (hourData.status === 'INACTIVE') {
             return '<div style="font-weight: bold; margin-bottom: 6px; border-bottom: 1px solid #4b646f; padding-bottom: 4px; display: flex; justify-content: space-between; align-items: center; gap: 12px;">' +
@@ -203,7 +223,7 @@
         }
 
         let html = '<div style="font-weight: bold; margin-bottom: 6px; border-bottom: 1px solid #4b646f; padding-bottom: 4px; display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;">' +
-                   '<span>' + safeDay + ' ' + safeTime + '</span>' +
+                   '<span>' + headerTime + '</span>' +
                    '<span>' + badgesHtml + '</span>' +
                    '</div>';
 
@@ -910,17 +930,25 @@
 
             row.hours.forEach(hourData => {
                 const cell = document.createElement('div');
-                let cellClass = 'hour-cell';
+                let stateClass = 'hour-inactive';
                 if (hourData.status === 'OK') {
-                    cellClass += ' hour-ok';
+                    stateClass = 'hour-ok';
                 } else if (hourData.status === 'WARNING') {
-                    cellClass += hourData.has_recovered ? ' hour-warning-recovered' : ' hour-warning';
+                    stateClass = hourData.has_recovered ? 'hour-warning-recovered' : 'hour-warning';
                 } else if (hourData.status === 'DANGER') {
-                    cellClass += hourData.has_recovered ? ' hour-danger-recovered' : ' hour-danger';
-                } else {
-                    cellClass += ' hour-inactive';
+                    stateClass = hourData.has_recovered ? 'hour-danger-recovered' : 'hour-danger';
                 }
-                cell.className = cellClass;
+
+                const fillPct = getCurrentHourFillPct(row.label, hourData);
+                if (fillPct !== null) {
+                    cell.className = 'hour-cell hour-current';
+                    const fill = document.createElement('span');
+                    fill.className = 'hour-cell-fill ' + stateClass;
+                    fill.style.width = fillPct + '%';
+                    cell.appendChild(fill);
+                } else {
+                    cell.className = 'hour-cell ' + stateClass;
+                }
 
                 const timeRange = formatHourRange(hourData.hour);
                 attachTooltipEvents(cell, hourData, dateText, timeRange, resolvedMap.get(hourData) === true);

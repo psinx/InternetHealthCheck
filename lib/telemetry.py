@@ -532,8 +532,9 @@ def build_telemetry_payload(
 
         for h in range(24):
             bucket = hour_ifaces[day_label][h]
+            is_current_hour = days_ago == 0 and h == now_dt.hour
             if not bucket or (days_ago == 0 and h > now_dt.hour):
-                day_cells.append({
+                inactive_cell: Dict[str, Any] = {
                     "hour": h,
                     "status": "INACTIVE",
                     "uptime": 0,
@@ -547,7 +548,11 @@ def build_telemetry_payload(
                     "dnscrypt": None if skip_dnscrypt else True,
                     "cloudflare": True,
                     "slow_hops": [],
-                })
+                    "is_current": is_current_hour,
+                }
+                if is_current_hour:
+                    inactive_cell["elapsed_minutes"] = now_dt.minute
+                day_cells.append(inactive_cell)
                 continue
 
             affected = [iface for iface, st in bucket.items() if st.had_danger or st.had_warning]
@@ -620,7 +625,7 @@ def build_telemetry_payload(
                 issue_times = [bucket[i].first_issue_ts for i in affected if bucket[i].first_issue_ts]
                 earliest_issue = min(issue_times) if issue_times else ""
 
-            day_cells.append({
+            cell_payload: Dict[str, Any] = {
                 "hour": h,
                 "status": st_str,
                 "uptime": uptime_pct,
@@ -634,7 +639,11 @@ def build_telemetry_payload(
                 "dnscrypt": dns_node,
                 "cloudflare": cf_node,
                 "slow_hops": slow_hops,
-            })
+                "is_current": is_current_hour,
+            }
+            if is_current_hour:
+                cell_payload["elapsed_minutes"] = now_dt.minute
+            day_cells.append(cell_payload)
 
         history_res.append({"label": day_label, "date": date_str, "hours": day_cells})
 
