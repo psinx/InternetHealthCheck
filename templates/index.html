@@ -83,7 +83,8 @@
         .time-header-scale { display: flex; flex-grow: 1; justify-content: space-between; font-family: monospace; font-size: 11px; opacity: 0.85; }
 
         /* Heatmap Legend */
-        .heatmap-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; font-size: 12px; padding: 10px 15px; }
+        .heatmap-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; font-size: 12px; padding: 10px 15px; }
+        .heatmap-legend::before, .heatmap-legend::after { display: none !important; content: none !important; }
         .legend-item { display: inline-flex; align-items: center; gap: 6px; }
         .legend-swatch { display: inline-block; width: 14px; height: 14px; border-radius: 3px; flex-shrink: 0; }
 
@@ -205,6 +206,7 @@
             .time-header-scale span:nth-child(3),
             .time-header-scale span:nth-child(5),
             .time-header-scale span:nth-child(6) { display: none; }
+            .heatmap-legend { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 12px; }
         }
 
         /* AdminLTE Box Styling */
