@@ -304,7 +304,7 @@
             
             // Cloudflare upstream fails if either cloudflare check failed OR internet ping is DOWN
             const cfOk = (activeIface.cloudflare && isConnOk);
-            updateNodeState('node-cloudflare', 'node-cloudflare-desc', cfOk, upstreamIp + ':53', activeIface.latency_cloudflare, 200);
+            updateNodeState('node-cloudflare', 'node-cloudflare-desc', cfOk, 'Cloudflare + Quad9 (' + upstreamIp + ')', activeIface.latency_cloudflare, 200);
             
             updateArrowState('arrow-1', activeIface.pihole);
             updateArrowState('arrow-2', activeIface.dnscrypt);
@@ -313,6 +313,26 @@
             updateLatencyText('lat-pi', activeIface.latency_pihole);
             updateLatencyText('lat-dns', activeIface.latency_dnscrypt);
             updateLatencyText('lat-cf', isConnOk ? activeIface.latency_cloudflare : -1);
+
+            // Populate Top Metric Small-Boxes
+            const piVal = activeIface.latency_pihole;
+            const upVal = isConnOk ? activeIface.latency_cloudflare : -1;
+            const lossVal = activeIface.packet_loss !== undefined ? activeIface.packet_loss : 0.0;
+
+            updateSmallBox('box-pihole-lat', 'metric-pihole-lat', 'sub-pihole-lat',
+                           (piVal !== undefined && piVal >= 0) ? (piVal + ' ms') : 'TIMEOUT',
+                           (piVal >= 150) ? 'High Latency (>= 150ms)' : ((piVal < 0) ? 'Hop Outage' : 'Local DNS Hop (< 150ms)'),
+                           (piVal < 0) ? 'red' : ((piVal >= 150) ? 'yellow' : 'green'));
+
+            updateSmallBox('box-upstream-lat', 'metric-upstream-lat', 'sub-upstream-lat',
+                           (upVal !== undefined && upVal >= 0) ? (upVal + ' ms') : 'TIMEOUT',
+                           (upVal >= 200) ? 'High Latency (>= 200ms)' : ((upVal < 0) ? 'DoH Outage' : 'Cloudflare + Quad9'),
+                           (upVal < 0) ? 'red' : ((upVal >= 200) ? 'yellow' : 'green'));
+
+            updateSmallBox('box-loss', 'metric-loss', 'sub-loss',
+                           lossVal.toFixed(1) + '%',
+                           (lossVal === 0) ? '1.1.1.1 Ping (Optimal)' : ((lossVal < 50) ? 'Partial Packet Loss' : 'Severe Loss / Outage'),
+                           (lossVal === 0) ? 'green' : ((lossVal < 50) ? 'yellow' : 'red'));
         }
 
         if (data.history) renderHistoricalGrid(data.history);
@@ -320,9 +340,9 @@
         if (data.incidents) renderIncidentsList(data.incidents);
 
         if (data.sla_percentage !== undefined) {
+            const val = Number(data.sla_percentage);
             const slaEl = document.getElementById('grid-uptime-pct');
             if (slaEl) {
-                const val = Number(data.sla_percentage);
                 if (val < 95.0) {
                     slaEl.className = 'label label-danger';
                 } else if (val < 99.0) {
@@ -332,6 +352,10 @@
                 }
                 slaEl.textContent = 'SLA: ' + val.toFixed(2) + '%';
             }
+            updateSmallBox('box-sla', 'metric-sla', 'sub-sla',
+                           val.toFixed(2) + '%',
+                           'Apdex Quality Weighted',
+                           (val < 95.0) ? 'red' : ((val < 99.0) ? 'yellow' : 'green'));
         }
     }
 
@@ -379,6 +403,17 @@
             el.textContent = val + 'ms'; el.className = 'label label-warning';
         } else {
             el.textContent = val + 'ms'; el.className = 'label label-success';
+        }
+    }
+
+    function updateSmallBox(boxId, metricId, subId, valText, subText, color) {
+        const box = document.getElementById(boxId);
+        const metric = document.getElementById(metricId);
+        const sub = document.getElementById(subId);
+        if (metric) metric.textContent = valText;
+        if (sub) sub.textContent = subText;
+        if (box) {
+            box.className = 'small-box bg-' + color + ' no-user-select';
         }
     }
 
