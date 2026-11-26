@@ -49,13 +49,13 @@
             outline: 2px solid #3c8dbc;
             outline-offset: 1px;
         }
-        .hour-cell.hour-ok { background-color: #00a65a; opacity: 1; }
-        .hour-cell.hour-warning { background-color: #f39c12; opacity: 1; }
-        .hour-cell.hour-danger { background-color: #dd4b39; opacity: 1; }
-        .hour-cell.hour-inactive { background-color: #d2d6de; opacity: 0.7; }
+        .hour-cell.hour-ok, .legend-swatch.hour-ok { background-color: #00a65a; opacity: 1; }
+        .hour-cell.hour-warning, .legend-swatch.hour-warning { background-color: #f39c12; opacity: 1; }
+        .hour-cell.hour-danger, .legend-swatch.hour-danger { background-color: #dd4b39; opacity: 1; }
+        .hour-cell.hour-inactive, .legend-swatch.hour-inactive { background-color: #d2d6de; opacity: 0.7; }
 
         /* Left-to-right hard split + subtle hatching for recovered incidents (CVD-safe) */
-        .hour-cell.hour-danger-recovered {
+        .hour-cell.hour-danger-recovered, .legend-swatch.hour-danger-recovered {
             background:
                 linear-gradient(90deg,
                     transparent 0%, transparent 46%,
@@ -66,7 +66,7 @@
                     #c0392b 3px, #c0392b 6px);
             opacity: 1;
         }
-        .hour-cell.hour-warning-recovered {
+        .hour-cell.hour-warning-recovered, .legend-swatch.hour-warning-recovered {
             background:
                 linear-gradient(90deg,
                     transparent 0%, transparent 46%,
@@ -134,11 +134,11 @@
 
         @media (prefers-color-scheme: dark) {
             .hour-cell { background-color: #4b646f; opacity: 0.55; }
-            .hour-cell.hour-ok { background-color: #00a65a; opacity: 1; }
-            .hour-cell.hour-warning { background-color: #f39c12; opacity: 1; }
-            .hour-cell.hour-danger { background-color: #dd4b39; opacity: 1; }
-            .hour-cell.hour-inactive { background-color: #4b646f; opacity: 0.55; }
-            .hour-cell.hour-danger-recovered {
+            .hour-cell.hour-ok, .legend-swatch.hour-ok { background-color: #00a65a; opacity: 1; }
+            .hour-cell.hour-warning, .legend-swatch.hour-warning { background-color: #f39c12; opacity: 1; }
+            .hour-cell.hour-danger, .legend-swatch.hour-danger { background-color: #dd4b39; opacity: 1; }
+            .hour-cell.hour-inactive, .legend-swatch.hour-inactive { background-color: #4b646f; opacity: 0.55; }
+            .hour-cell.hour-danger-recovered, .legend-swatch.hour-danger-recovered {
                 background:
                     linear-gradient(90deg,
                         transparent 0%, transparent 46%,
@@ -149,7 +149,7 @@
                         #b93829 3px, #b93829 6px);
                 opacity: 1;
             }
-            .hour-cell.hour-warning-recovered {
+            .hour-cell.hour-warning-recovered, .legend-swatch.hour-warning-recovered {
                 background:
                     linear-gradient(90deg,
                         transparent 0%, transparent 46%,

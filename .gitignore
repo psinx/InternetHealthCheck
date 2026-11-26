@@ -21,3 +21,5 @@ backups/
 *.tar.gz
 *.png
 dashboard/
+__pycache__/
+*.pyc
