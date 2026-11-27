@@ -138,6 +138,41 @@
 
         .small-box.bg-yellow { text-shadow: 0 1px 2px rgba(0,0,0,0.35); }
 
+        /* KPI Metric Cards Grid (prevents Bootstrap 3 float snag across browsers & font scales) */
+        .kpi-row {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 0 30px;
+            margin-left: 0;
+            margin-right: 0;
+        }
+        .kpi-row::before, .kpi-row::after { display: none !important; content: none !important; }
+        .kpi-row > [class*="col-"] {
+            float: none;
+            width: auto;
+            padding-left: 0;
+            padding-right: 0;
+            display: flex;
+        }
+        .kpi-row .small-box {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+        .kpi-row .small-box-footer {
+            padding: 4px 8px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        @media (max-width: 1199px) {
+            .kpi-row {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 0 15px;
+            }
+        }
+
         @media (prefers-color-scheme: dark) {
             .hour-cell { background-color: #4b646f; opacity: 0.55; }
             .hour-cell.hour-ok, .hour-cell-fill.hour-ok, .legend-swatch.hour-ok { background-color: #00a65a; opacity: 1; }
@@ -284,7 +319,7 @@
             </div>
 
             <!-- Top Metric Cards (Pi-hole Native AdminLTE small-box, starts gray until hydrated) -->
-            <div class="row" style="margin-bottom: 5px;">
+            <div class="row kpi-row" style="margin-bottom: 5px;">
                 <div class="col-lg-3 col-xs-6">
                     <div class="small-box bg-gray no-user-select" id="box-pihole-lat">
                         <div class="inner">
